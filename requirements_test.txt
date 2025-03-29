@@ -1,4 +1,7 @@
 pytest
 pytest-asyncio
+pytest-cov
+# Add simplejson for tests needing JSON parsing
+simplejson
 homeassistant
 pycryptodome 
