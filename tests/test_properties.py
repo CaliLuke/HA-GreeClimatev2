@@ -2,7 +2,7 @@
 from homeassistant.components.climate import ClimateEntityFeature, HVACMode
 from homeassistant.const import UnitOfTemperature
 
-from custom_components.gree.climate import (DEFAULT_TARGET_TEMP_STEP,
+from custom_components.greev2.climate import (DEFAULT_TARGET_TEMP_STEP,
                                             FAN_MODES, HVAC_MODES, MAX_TEMP,
                                             MIN_TEMP, PRESET_MODES,
                                             SWING_MODES)

@@ -1,0 +1,9 @@
+{
+  "domain": "greev2",
+  "name": "Gree AC v2",
+  "version": "2.14.5",
+  "documentation": "https://github.com/CaliLuke/HA-GreeClimatev2#readme",
+  "dependencies": [],
+  "codeowners": ["@caliluke"],
+  "requirements": ["pycryptodome"]
+}

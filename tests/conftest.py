@@ -6,7 +6,7 @@ from homeassistant.core import HomeAssistant
 
 # Assuming climate.py is in custom_components/gree relative to the root
 # Adjust the import path if your structure is different
-from custom_components.gree.climate import (DEFAULT_PORT,
+from custom_components.greev2.climate import (DEFAULT_PORT,
                                             DEFAULT_TARGET_TEMP_STEP,
                                             DEFAULT_TIMEOUT, FAN_MODES,
                                             HVAC_MODES, PRESET_MODES,

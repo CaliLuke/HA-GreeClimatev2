@@ -6,7 +6,7 @@ from homeassistant.components.climate import \
     HVACMode  # Ensure HVACMode is imported
 from homeassistant.core import HomeAssistant
 
-from custom_components.gree.climate import \
+from custom_components.greev2.climate import \
     GCM_DEFAULT_KEY  # Import the correct default key used for binding
 # Import MOCK constants from conftest using absolute path relative to tests dir
 from tests.conftest import MOCK_IP, MOCK_MAC, MOCK_NAME, MOCK_PORT

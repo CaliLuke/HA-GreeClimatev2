@@ -7,7 +7,7 @@ from homeassistant.components.climate import HVACMode
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 
-from custom_components.gree.climate import FAN_MODES, SWING_MODES
+from custom_components.greev2.climate import FAN_MODES, SWING_MODES
 
 # Fixtures (mock_hass, gree_climate_device) are automatically discovered from conftest.py
 
