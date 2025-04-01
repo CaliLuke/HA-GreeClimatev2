@@ -14,8 +14,8 @@ except ImportError:
 _LOGGER = logging.getLogger(__name__)
 
 # Placeholder constants for GCM (might need to be moved/configured)
-GCM_IV = b"\0\0\0\0\0\0\0\0\0\0\0\0"
-GCM_ADD = b""
+GCM_IV = b'\x54\x40\x78\x44\x49\x67\x5a\x51\x6c\x5e\x63\x13'
+GCM_ADD = b'qualcomm-test'
 
 
 class GreeDeviceApi:
