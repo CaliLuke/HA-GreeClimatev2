@@ -30,13 +30,14 @@ async def test_update_calls_get_values(
     """Test update correctly calls GreeGetValues."""
     # Get device instance
     device: GreeClimate = gree_climate_device()
-    # Mock response values as dict - needed for the method to run
-    mock_status_dict: Dict[str, Any] = {key: 0 for key in device._options_to_fetch}
-    mock_api_get_status.return_value = mock_status_dict
+    # Mock response values as list - needed for the method to run
+    mock_status_list: List[Any] = [0 for _ in device._options_to_fetch]
+    mock_api_get_status.return_value = mock_status_list
 
     # Ensure key exists so async_update() calls _update_sync directly
     device._encryption_key = b"testkey123456789"
-    device._api._cipher = MagicMock()  # Mock the API's cipher
+    device._api._cipher = MagicMock()
+    device._max_online_attempts = 1 # Ensure failure marks offline  # Mock the API's cipher
     # Prevent initial feature check call to GreeGetValues
     device._has_temp_sensor = False
     device._has_anti_direct_blow = False
@@ -46,10 +47,6 @@ async def test_update_calls_get_values(
     with patch.object(device._api, "_is_bound", True):
         # Call the update method
         await device.async_update()
-
-    # Note: The original test expected an IndexError from SetAcOptions.
-    # If SetAcOptions is now more robust, this test might just pass without error.
-    # We only assert that GreeGetValues was called.
 
     # Assertion: Only check if GreeGetValues was called
     mock_api_get_status.assert_called_once_with(device._options_to_fetch)
@@ -86,6 +83,7 @@ async def test_update_success_full(
     # Ensure key exists so async_update() calls _update_sync directly
     device._encryption_key = b"testkey123456789"
     device._api._cipher = MagicMock()
+    device._max_online_attempts = 1 # Ensure failure marks offline
     # Prevent initial feature check calls
     device._has_temp_sensor = False
     device._has_anti_direct_blow = False
@@ -130,6 +128,7 @@ async def test_update_timeout(
     # Ensure key exists so async_update() calls _update_sync directly
     device._encryption_key = b"testkey123456789"
     device._api._cipher = MagicMock()
+    device._max_online_attempts = 1 # Ensure failure marks offline
 
     # Ensure the API object thinks it's bound
     with patch.object(device._api, "_is_bound", True):
@@ -142,30 +141,26 @@ async def test_update_timeout(
     assert device._device_online is False
 
 
-@pytest.mark.xfail(
-    reason="SetAcOptions may raise error on invalid/incomplete data",
-    # raises=IndexError, # Might raise KeyError or other error now
-    strict=True,
-)
+# Remove xfail marker
+# @pytest.mark.xfail(
+#     reason="SetAcOptions may raise error on invalid/incomplete data",
+#     # raises=IndexError, # Might raise KeyError or other error now
+#     strict=True,
+# )
 @patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
-async def test_update_invalid_response(
+async def test_update_invalid_response_length(  # Renamed test
     mock_api_get_status: MagicMock,
     gree_climate_device: GreeClimateFactory,
     mock_hass: HomeAssistant,
     caplog: LogCaptureFixture,
 ) -> None:
-    """Test state update when device returns invalid/incomplete data."""
+    """Test state update when device returns list with incorrect length."""
     # Get device instance
     device: GreeClimate = gree_climate_device()
-    # Simulate an invalid response (dictionary with missing keys)
-    invalid_response_dict: Dict[str, Any] = {"Pow": 1, "Mod": 1}  # Missing many keys
-    mock_api_get_status.return_value = invalid_response_dict
+    # Simulate an invalid response (list with too few items)
+    invalid_response_list: List[Any] = [1, 1]  # Incomplete list
+    mock_api_get_status.return_value = invalid_response_list
     expected_options_len: int = len(device._options_to_fetch)
-
-    # Store initial state for comparison
-    initial_ac_options: Dict[str, Any] = (
-        device._ac_options.copy()
-    )  # Corrected attribute name
 
     # Ensure device starts online, has key, and feature checks are skipped
     device._device_online = True
@@ -174,19 +169,19 @@ async def test_update_invalid_response(
     device._has_light_sensor = False
     device._encryption_key = b"testkey123456789"
     device._api._cipher = MagicMock()
+    device._max_online_attempts = 1 # Ensure failure marks offline
 
-    # Call update
-    await device.async_update()
+    # Ensure the API object thinks it's bound
+    with patch.object(device._api, "_is_bound", True):
+        # Call update - expecting ConnectionError due to list length mismatch in sync_state
+        await device.async_update()
 
     # Assertions
     mock_api_get_status.assert_called_once_with(device._options_to_fetch)
-    assert device.available is True  # Communication succeeded, parsing might fail
-    # Check if state changed - depends on SetAcOptions robustness
-    # assert device._acOptions == initial_ac_options
-    # Check for a warning/error log from SetAcOptions if it handles missing keys
-    assert (
-        "Could not convert value" in caplog.text or "SetAcOptions error" in caplog.text
-    )
+    # Device should become unavailable due to the error during sync_state
+    assert device.available is False
+    # Check for the specific error log about list length mismatch
+    assert "API list length mismatch" in caplog.text
 
 
 @patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
@@ -206,6 +201,7 @@ async def test_update_sets_availability(
     # Ensure key exists, etc.
     device._encryption_key = b"testkey123456789"
     device._api._cipher = MagicMock()
+    device._max_online_attempts = 1 # Ensure failure marks offline
     device._has_temp_sensor = False
     device._has_anti_direct_blow = False
     device._has_light_sensor = False
@@ -287,22 +283,22 @@ async def test_update_gcm_calls_api_methods(
     mock_gcm_cipher_instance = MagicMock()
     mock_get_gcm_cipher.return_value = mock_gcm_cipher_instance
 
-    # Mock the decrypted response that GreeGetValues expects from fetch_result
-    mock_decrypted_data: Dict[str, Any] = {
-        key: 0 for key in device_v2._options_to_fetch
-    }  # Use dict format
-    # Mock the structure returned by _fetch_result which includes 'dat'
-    mock_fetch_result.return_value = {"dat": mock_decrypted_data}
+    # Mock the decrypted response that get_status expects from fetch_result
+    # Use list format matching actual API response
+    mock_status_values: List[Any] = [0] * len(device_v2._options_to_fetch)
+    # Mock the structure returned by _fetch_result which includes 'dat' (as list) and 'cols'
+    mock_fetch_result.return_value = {
+        "dat": mock_status_values,
+        "cols": device_v2._options_to_fetch,
+    }
 
-    # Prevent initial feature check calls which also use GreeGetValues
+    # Prevent initial feature check calls which also use GreeGetValues/get_status
     device_v2._has_temp_sensor = False
     device_v2._has_anti_direct_blow = False
     device_v2._has_light_sensor = False
 
     # Call the update method
     await device_v2.async_update()
-    # Note: Original test caught IndexError from SetAcOptions.
-    # If SetAcOptions is robust, this should pass.
 
     # Assertions: Check API methods were called correctly by GreeGetValues -> get_status
     expected_plaintext: str = (
@@ -426,8 +422,6 @@ async def test_update_gcm_key_retrieval_and_update(
     # --- Action ---
     # Call the update method
     await device_v2.async_update()
-    # Note: Original test caught IndexError from SetAcOptions.
-    # If SetAcOptions is robust, this should pass.
 
     # --- Assertions ---
 
@@ -584,4 +578,3 @@ async def test_async_update_current_temp_invalid_state(
         device.current_temperature is initial_temp
     )  # Temperature should not change (remain None)
     assert "Temp sensor state 'unavailable' is not a valid float." in caplog.text
-    # Removed incorrect assertion: assert device_v2.available is True

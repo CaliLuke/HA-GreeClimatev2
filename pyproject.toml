@@ -3,7 +3,7 @@ name = "ha-greeclimatev2"
 version = "0.1.0" # Placeholder version, can be updated later
 description = "Home Assistant Custom Component for Gree Climate V2"
 readme = "README.md"
-license = { file = "LICENSE" } # Assuming LICENSE file exists
+license = "LICENSE"
 requires-python = ">=3.13" # Based on the recreated environment
 
 # Add core dependencies if any are needed outside of testing
@@ -22,6 +22,7 @@ test = [
     "black",
     "mypy",
     "pylint", # Added pylint
+    "pytest-homeassistant-custom-component",
 ]
 
 # Optional: Build system configuration if packaging

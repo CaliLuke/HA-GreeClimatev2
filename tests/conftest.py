@@ -3,13 +3,14 @@ from typing import Any, AsyncGenerator, Awaitable, Callable, Generator, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant import config_entries  # Added for ConfigEntry spec
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
 # Assuming climate.py is in custom_components/gree relative to the root
 # Adjust the import path if your structure is different
-from custom_components.greev2.climate import GreeClimate # Keep entity import
-from custom_components.greev2.const import ( # Import constants from const.py
+from custom_components.greev2.climate import GreeClimate  # Keep entity import
+from custom_components.greev2.const import (  # Import constants from const.py
     DEFAULT_PORT,
     DEFAULT_TARGET_TEMP_STEP,
     DEFAULT_TIMEOUT,
@@ -17,6 +18,7 @@ from custom_components.greev2.const import ( # Import constants from const.py
     HVAC_MODES,
     PRESET_MODES,
     SWING_MODES,
+    CONF_ENCRYPTION_VERSION,  # Added
     # Add any other constants needed by tests if missing
 )
 
@@ -24,7 +26,7 @@ from custom_components.greev2.const import ( # Import constants from const.py
 # Mock socket communication to prevent actual network calls
 # Apply these globally for all tests collected by pytest in this directory/subdirectories
 # Use pytest fixtures for patching where possible for better control, but global patch is okay for now
-patch("socket.socket", MagicMock()).start()
+# patch("socket.socket", MagicMock()).start() # Commented out - causes issues with test setup
 patch("Crypto.Cipher.AES", MagicMock()).start()
 
 # --- Constants for Tests ---
@@ -37,6 +39,13 @@ MOCK_NAME: str = "Test Gree AC"
 GreeClimateFactory = Callable[..., GreeClimate]
 
 # --- Fixtures ---
+
+
+# Automatically load custom components from custom_components folder
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations):
+    """Enable custom integrations defined in the test environment."""
+    yield
 
 
 @pytest.fixture
@@ -112,6 +121,7 @@ async def mock_hass() -> AsyncGenerator[HomeAssistant, None]:
 async def gree_climate_device(mock_hass: HomeAssistant) -> GreeClimateFactory:
     """Fixture factory to create a GreeClimate instance with mock config."""
 
+    # Reverted to original factory signature matching climate.py's current __init__
     def _factory(
         encryption_version: int = 1,
         encryption_key: Optional[str] = None,
@@ -168,18 +178,6 @@ async def gree_climate_device(mock_hass: HomeAssistant) -> GreeClimateFactory:
             encryption_key=encryption_key,
             uid=uid,
         )
-        # Assign hass after init if needed, common pattern in HA tests
-        # device.hass = mock_hass # Already assigned in __init__
-
-        # Set a unique ID if your tests rely on it
-        # device.entity_id = f"climate.test_gree_ac_{encryption_version}" # entity_id is usually set by HA core
-
-        # Initialize potentially checked attributes to avoid errors in tests
-        # Set default values that would normally be set after first update/check
-        # These are already initialized in GreeClimate.__init__ now
-        # device._has_temp_sensor = None
-        # device._has_anti_direct_blow = None
-        # device._has_light_sensor = None
         return device
 
     return _factory
