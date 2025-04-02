@@ -9,7 +9,8 @@
           "host": "IP Address",
           "mac": "MAC Address",
           "name": "Name",
-          "area_id": "Area"
+          "area_id": "Area",
+          "encryption_version": "Encryption Version"
         }
       }
     },

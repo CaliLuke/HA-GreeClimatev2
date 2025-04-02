@@ -11,7 +11,13 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.device_registry import format_mac # For cleaning MAC
 
 # Assuming DOMAIN is defined in const.py, otherwise define it here
-from .const import DOMAIN, DEFAULT_NAME, DEFAULT_PORT, DEFAULT_TIMEOUT
+from .const import (
+    DOMAIN,
+    DEFAULT_NAME,
+    DEFAULT_PORT,
+    DEFAULT_TIMEOUT,
+    CONF_ENCRYPTION_VERSION, # Import constant
+)
 from .device_api import GreeDeviceApi # Import the API
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,11 +25,19 @@ _LOGGER = logging.getLogger(__name__)
 # Log module import
 _LOGGER.info("GreeV2 Config Flow module loading...")
 
+# Define encryption version options
+ENCRYPTION_OPTIONS = [
+    selector.SelectOptionDict(value="1", label="V1 (ECB)"),
+    selector.SelectOptionDict(value="2", label="V2 (GCM)"),
+]
+
 # Define the base schema for the user configuration step
 # We make it dynamic later to preserve input on errors
 def get_user_schema(user_input: dict | None = None) -> vol.Schema:
     """Return the user step schema, pre-filled with user input if available."""
     user_input = user_input or {}
+    # Default to V2 based on user's previous config, but allow selection
+    default_enc_version = user_input.get(CONF_ENCRYPTION_VERSION, "2")
     return vol.Schema(
         {
             vol.Required(CONF_HOST, default=user_input.get(CONF_HOST, "")): str,
@@ -31,7 +45,13 @@ def get_user_schema(user_input: dict | None = None) -> vol.Schema:
             vol.Optional(
                 CONF_NAME, default=user_input.get(CONF_NAME, DEFAULT_NAME)
             ): str,
-            vol.Optional("area_id"): selector.AreaSelector(), # Add Area selector
+            vol.Optional("area_id", default=user_input.get("area_id")): selector.AreaSelector(),
+            # Add Encryption Version selector
+            vol.Optional(
+                CONF_ENCRYPTION_VERSION, default=default_enc_version
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=ENCRYPTION_OPTIONS, mode=selector.SelectSelectorMode.DROPDOWN),
+            ),
         }
     )
 
@@ -41,28 +61,31 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, str]:
     _LOGGER.debug("Validating input data: %s", data) # Log received data
     host = data[CONF_HOST]
     mac = data[CONF_MAC]
+    # Get selected encryption version, default to 1 if somehow missing (shouldn't happen with default)
+    enc_version_str = data.get(CONF_ENCRYPTION_VERSION, "1")
+    try:
+        enc_version = int(enc_version_str)
+    except (ValueError, TypeError):
+        _LOGGER.warning("Invalid encryption version '%s', defaulting to 1", enc_version_str)
+        enc_version = 1
+
     # Clean MAC address (remove separators, lowercase)
     cleaned_mac = format_mac(mac)
-    _LOGGER.debug("Extracted Host: %s, Cleaned MAC: %s", host, cleaned_mac) # Log extracted values
-
-    # Basic MAC format check (already done by format_mac, but explicit check is fine)
-    # if not re.match(r"^[0-9a-f]{12}$", cleaned_mac):
-    #     _LOGGER.error("Invalid MAC address format: %s", mac)
-    #     raise InvalidMacFormat # Custom exception or map to error key
+    _LOGGER.debug("Extracted Host: %s, Cleaned MAC: %s, Enc Ver: %d", host, cleaned_mac, enc_version) # Log extracted values
 
     try:
-        # Instantiate API - use defaults for port/timeout for now
+        # Instantiate API - use defaults for port/timeout
+        _LOGGER.debug("Instantiating API with encryption_version=%d", enc_version)
         api = GreeDeviceApi(
             host=host,
             port=DEFAULT_PORT,
             mac=cleaned_mac,
             timeout=DEFAULT_TIMEOUT,
-            # encryption_key=None, # Default
-            # encryption_version=1, # Default - API tries both V1 and V2 if key not provided
+            encryption_version=enc_version, # Use selected version
         )
 
         # Run the blocking bind operation in executor
-        _LOGGER.debug("Attempting to bind to device %s (%s)", host, cleaned_mac)
+        _LOGGER.debug("Attempting to bind to device %s (%s) using V%d", host, cleaned_mac, enc_version)
         is_bound = await hass.async_add_executor_job(api.bind_and_get_key)
 
         if not is_bound:
@@ -101,13 +124,10 @@ class GreeV2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         _LOGGER.info("GreeV2 Config Flow: async_step_user started.")
         errors = {}
-        # Get schema, pre-filled if user_input exists (e.g., from error)
-        # Pass None initially so defaults aren't filled on first view
-        data_schema = get_user_schema(user_input if errors else None)
+        # Pass user_input to pre-fill schema only if it exists (i.e., on error)
+        data_schema = get_user_schema(user_input)
 
         if user_input is not None:
-            # Get schema again, this time pre-filled for potential error re-display
-            data_schema = get_user_schema(user_input)
             try:
                 # Validate the input by trying to connect and bind
                 info = await validate_input(self.hass, user_input)
@@ -120,7 +140,7 @@ class GreeV2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # If validation succeeds, create the entry
                 _LOGGER.info("Validation successful, creating config entry.")
-                # Pass original user_input (including name and area_id) to data
+                # Pass original user_input (including name, area_id, enc version) to data
                 return self.async_create_entry(title=info["title"], data=user_input)
 
             except CannotConnect:
@@ -135,8 +155,11 @@ class GreeV2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception in config flow: %s", e)
                 errors["base"] = "unknown"
 
+            # If errors occurred, schema is already pre-filled by get_user_schema(user_input) above
+
         # Show the form to the user (again if errors occurred, pre-filled)
         _LOGGER.info("GreeV2 Config Flow: Showing user form. Errors: %s", errors)
+        # Pass the potentially pre-filled schema
         return self.async_show_form(
             step_id="user", data_schema=data_schema, errors=errors
         )
