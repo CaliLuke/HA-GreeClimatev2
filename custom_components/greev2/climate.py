@@ -1315,7 +1315,7 @@ class GreeClimate(ClimateEntity):
         # --- Send Commands (if needed) ---
         # If not the first (boot) run AND commands were passed, update state towards the HVAC
         if not self._first_time_run and ac_options:
-            self.send_state_to_ac(self._timeout)  # timeout arg seems unused?
+            self.send_state_to_ac()  # Removed timeout argument
         elif self._first_time_run:
             # loop used once for Gree Climate initialisation only
             self._first_time_run = False

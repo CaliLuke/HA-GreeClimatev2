@@ -186,3 +186,24 @@ This file records architectural and implementation decisions using a list format
 *   **Implementation:** Created `release.sh` in project root with the specified functionality. Added a `--dry-run` option to allow verification of commands before execution.
 
 ---
+
+## Decision
+
+*   [2025-04-01 20:22:10] Add integration tests for service calls before refactoring `climate.py`.
+
+## Rationale
+
+*   A bug (`TypeError` in `send_state_to_ac` call from `sync_state`) was missed by existing tests because they either mocked methods too high in the call stack or tested methods directly, bypassing the integration points.
+*   Adding tests that call service methods (e.g., `set_hvac_mode`) and only mock the final API layer (`_api.send_command`) will provide better coverage of the internal call chain and help prevent regressions during the planned refactoring of `climate.py`.
+
+## Implementation Details (Plan)
+
+*   Add tests to `tests/test_command.py` (or a new file).
+*   For each key service call (`set_hvac_mode`, `set_temperature`, etc.):
+    *   Instantiate `GreeClimate`.
+    *   Patch `device._api.send_command`.
+    *   Call the service method.
+    *   Assert `send_command` was called once with the correct `opt` and `p` arguments.
+*   **Implementation:** Added 5 integration tests (`test_set_hvac_mode_integration`, etc.) to `tests/test_command.py`. These tests call service methods and mock only `_api.send_command`. Fixed initial failures by also mocking `gree_get_values` and setting `_first_time_run = False` in test setup. Confirmed tests pass via `pytest`. Ran `black` and `mypy` checks successfully.
+
+---

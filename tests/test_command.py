@@ -121,14 +121,11 @@ def test_send_state_to_ac_gcm(
     # Ensure the API object also has the key set correctly by the fixture/init
     assert device._api._encryption_key == TEST_GCM_KEY.encode("utf8")
     assert device.encryption_version == 2
-    # Store key directly on device instance as well (SendStateToAc uses this)
-    # device._encryption_key = TEST_GCM_KEY.encode("utf8") # Already set by init
 
     # Set initial state (e.g., turning Cool mode on at 22C)
-    # Use the internal _acOptions dictionary directly
     initial_options: Dict[str, Any] = {
         "Pow": 1,
-        "Mod": HVACMode.COOL.value,  # Use value for consistency
+        "Mod": HVACMode.COOL.value,
         "SetTem": 22,
         "WdSpd": 1,
         "Air": 0,
@@ -146,7 +143,6 @@ def test_send_state_to_ac_gcm(
         "TemRec": 0,
         "SvSt": 0,
         "SlpMod": 0,
-        # Add optional keys if needed, ensure they match _acOptions structure
         "TemSen": None,
         "AntiDirectBlow": None,
         "LigSen": None,
@@ -165,12 +161,10 @@ def test_send_state_to_ac_gcm(
     mock_fetch_result.return_value = {"r": 200, "opt": ["Pow"], "p": [1]}
 
     # 3. Action: Call send_state_to_ac directly
-    # timeout arg was removed from send_state_to_ac
     device.send_state_to_ac()
 
     # 4. Assertions
     # 4a. Check _encrypt_gcm call
-    # Construct the expected statePackJson based on initial_options
     ordered_keys: List[str] = [
         "Pow",
         "Mod",
@@ -192,29 +186,20 @@ def test_send_state_to_ac_gcm(
         "SvSt",
         "SlpMod",
     ]
-
-    # Handle potential feature flags (_has_anti_direct_blow, _has_light_sensor)
-    # For this basic test, assume they are False/None initially
-    device._has_anti_direct_blow = False
+    device._has_anti_direct_blow = False  # Assume features off for this test
     device._has_light_sensor = False
     # Add keys if features were enabled
     # if device._has_anti_direct_blow: ordered_keys.append("AntiDirectBlow")
     # if device._has_light_sensor: ordered_keys.append("LigSen")
 
-    # Construct the expected payload dictionary
     expected_payload_dict: Dict[str, Any] = {
         "opt": ordered_keys,
-        "p": [initial_options.get(k) for k in ordered_keys],  # Get values in order
+        "p": [initial_options.get(k) for k in ordered_keys],
         "t": "cmd",
     }
-    # Convert values if necessary (already done in send_command, check consistency)
-    # The send_command method handles conversions, so expected 'p' should match initial_options here
-
-    # Use json to create the expected JSON string, matching send_command
     expected_statePackJson: str = json.dumps(
         expected_payload_dict, separators=(",", ":")
     )
-
     mock_encrypt_gcm.assert_called_once_with(
         TEST_GCM_KEY.encode("utf8"), expected_statePackJson
     )
@@ -225,15 +210,13 @@ def test_send_state_to_ac_gcm(
     # 4c. Check _fetch_result call
     expected_fetch_payload_dict: Dict[str, Any] = {
         "cid": "app",
-        "i": 0,  # SendStateToAc uses i=0
+        "i": 0,
         "pack": mock_pack,
         "t": "pack",
-        "tcid": device._mac_addr,  # Use the device's mac
-        "uid": 0,  # Assuming default uid
+        "tcid": device._mac_addr,
+        "uid": 0,
         "tag": mock_tag,
     }
-    # Convert dict to JSON string for comparison, ensuring order matches climate.py if needed
-    # Using json.loads on the actual call argument is safer
     mock_fetch_result.assert_called_once()
     actual_call_args, _ = mock_fetch_result.call_args
     actual_cipher_arg: Any = actual_call_args[0]
@@ -243,4 +226,213 @@ def test_send_state_to_ac_gcm(
     assert json.loads(actual_payload_str) == expected_fetch_payload_dict
 
 
-# Add more tests for other command methods as needed
+# --- Integration Tests (Service Call Flow) ---
+
+
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
+def test_set_hvac_mode_integration(
+    mock_api_send_command: MagicMock,
+    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    gree_climate_device: GreeClimateFactory,
+) -> None:
+    """Test set_hvac_mode calls API via sync_state with correct payload."""
+    # Arrange
+    device = gree_climate_device(
+        encryption_key="testkey123456789"
+    )  # Pass key as string
+    device._first_time_run = False  # Simulate initial update already happened
+    # Set plausible initial state (device is ON, Cool, Auto Fan, Default Swing)
+    device._ac_options["Pow"] = 1
+    device._ac_options["Mod"] = 1  # Cool
+    device._ac_options["WdSpd"] = 0  # Auto
+    device._ac_options["SwUpDn"] = 0  # Default
+    # Mock the status fetch within sync_state based on this initial state
+    initial_state_list = [
+        device._ac_options.get(key, 0) for key in device._options_to_fetch
+    ]
+    mock_gree_get_values.return_value = initial_state_list
+    # Mock API send_command response
+    mock_api_send_command.return_value = {"r": 200, "opt": ["Pow", "Mod"], "p": [1, 4]}
+
+    # Act
+    device.set_hvac_mode(HVACMode.HEAT)  # Call the synchronous service method
+
+    # Assert
+    mock_api_send_command.assert_called_once()
+    call_args, _ = mock_api_send_command.call_args
+    sent_opt_keys = call_args[0]
+    sent_p_values = call_args[1]
+    # Verify payload reflects HEAT command (Pow=1, Mod=4)
+    assert "Pow" in sent_opt_keys and "Mod" in sent_opt_keys
+    pow_index = sent_opt_keys.index("Pow")
+    mod_index = sent_opt_keys.index("Mod")
+    assert sent_p_values[pow_index] == 1
+    assert sent_p_values[mod_index] == 4  # HEAT mode index
+
+
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
+def test_set_temperature_integration(
+    mock_api_send_command: MagicMock,
+    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    gree_climate_device: GreeClimateFactory,
+) -> None:
+    """Test set_temperature calls API via sync_state with correct payload."""
+    # Arrange
+    device = gree_climate_device(
+        encryption_key="testkey123456789"
+    )  # Pass key as string
+    device._first_time_run = False  # Simulate initial update already happened
+    # Set plausible initial state
+    device._ac_options["Pow"] = 1
+    device._ac_options["Mod"] = 1  # Cool
+    device._ac_options["WdSpd"] = 0  # Auto
+    device._ac_options["SwUpDn"] = 0  # Default
+    device._ac_options["StHt"] = 0  # Ensure 8C heat mode is off
+    # Mock the status fetch within sync_state
+    initial_state_list = [
+        device._ac_options.get(key, 0) for key in device._options_to_fetch
+    ]
+    mock_gree_get_values.return_value = initial_state_list
+    # Mock API send_command response
+    mock_api_send_command.return_value = {"r": 200, "opt": ["SetTem"], "p": [22]}
+
+    # Act
+    device.set_temperature(temperature=22.0)  # Call the synchronous service method
+
+    # Assert
+    mock_api_send_command.assert_called_once()
+    call_args, _ = mock_api_send_command.call_args
+    sent_opt_keys = call_args[0]
+    sent_p_values = call_args[1]
+    # Verify the payload sent reflects the SetTem command
+    assert "SetTem" in sent_opt_keys
+    settem_index = sent_opt_keys.index("SetTem")
+    assert sent_p_values[settem_index] == 22  # Target temperature
+
+
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
+def test_set_fan_mode_integration(
+    mock_api_send_command: MagicMock,
+    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    gree_climate_device: GreeClimateFactory,
+) -> None:
+    """Test set_fan_mode calls API via sync_state with correct payload."""
+    # Arrange
+    device = gree_climate_device(
+        encryption_key="testkey123456789"
+    )  # Pass key as string
+    device._first_time_run = False  # Simulate initial update already happened
+    # Set plausible initial state
+    device._ac_options["Pow"] = 1
+    device._ac_options["Mod"] = 1  # Cool
+    device._ac_options["WdSpd"] = 0  # Auto
+    device._ac_options["SwUpDn"] = 0  # Default
+    # Mock the status fetch within sync_state
+    initial_state_list = [
+        device._ac_options.get(key, 0) for key in device._options_to_fetch
+    ]
+    mock_gree_get_values.return_value = initial_state_list
+    # Mock API send_command response
+    mock_api_send_command.return_value = {"r": 200, "opt": ["WdSpd"], "p": [3]}
+
+    # Act
+    device.set_fan_mode("Medium")  # Call the synchronous service method
+
+    # Assert
+    mock_api_send_command.assert_called_once()
+    call_args, _ = mock_api_send_command.call_args
+    sent_opt_keys = call_args[0]
+    sent_p_values = call_args[1]
+    # Verify payload reflects WdSpd=3 (Medium), Tur=0, Quiet=0
+    assert (
+        "WdSpd" in sent_opt_keys and "Tur" in sent_opt_keys and "Quiet" in sent_opt_keys
+    )
+    wdspd_index = sent_opt_keys.index("WdSpd")
+    tur_index = sent_opt_keys.index("Tur")
+    quiet_index = sent_opt_keys.index("Quiet")
+    assert sent_p_values[wdspd_index] == 3
+    assert sent_p_values[tur_index] == 0
+    assert sent_p_values[quiet_index] == 0
+
+
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
+def test_turn_on_integration(
+    mock_api_send_command: MagicMock,
+    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    gree_climate_device: GreeClimateFactory,
+) -> None:
+    """Test turn_on calls API via sync_state with correct payload."""
+    # Arrange
+    device = gree_climate_device(
+        encryption_key="testkey123456789"
+    )  # Pass key as string
+    device._first_time_run = False  # Simulate initial update already happened
+    # Set plausible initial state (device is OFF)
+    device._ac_options["Pow"] = 0
+    device._ac_options["Mod"] = 1  # Cool
+    device._ac_options["WdSpd"] = 0  # Auto
+    device._ac_options["SwUpDn"] = 0  # Default
+    # Mock the status fetch within sync_state
+    initial_state_list = [
+        device._ac_options.get(key, 0) for key in device._options_to_fetch
+    ]
+    mock_gree_get_values.return_value = initial_state_list
+    # Mock API send_command response
+    mock_api_send_command.return_value = {"r": 200, "opt": ["Pow"], "p": [1]}
+
+    # Act
+    device.turn_on()  # Call the synchronous service method
+
+    # Assert
+    mock_api_send_command.assert_called_once()
+    call_args, _ = mock_api_send_command.call_args
+    sent_opt_keys = call_args[0]
+    sent_p_values = call_args[1]
+    # Verify payload reflects Pow=1 command
+    assert "Pow" in sent_opt_keys
+    pow_index = sent_opt_keys.index("Pow")
+    assert sent_p_values[pow_index] == 1
+
+
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
+def test_turn_off_integration(
+    mock_api_send_command: MagicMock,
+    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    gree_climate_device: GreeClimateFactory,
+) -> None:
+    """Test turn_off calls API via sync_state with correct payload."""
+    # Arrange
+    device = gree_climate_device(
+        encryption_key="testkey123456789"
+    )  # Pass key as string
+    device._first_time_run = False  # Simulate initial update already happened
+    # Set plausible initial state (device is ON)
+    device._ac_options["Pow"] = 1
+    device._ac_options["Mod"] = 1  # Cool
+    device._ac_options["WdSpd"] = 0  # Auto
+    device._ac_options["SwUpDn"] = 0  # Default
+    # Mock the status fetch within sync_state
+    initial_state_list = [
+        device._ac_options.get(key, 0) for key in device._options_to_fetch
+    ]
+    mock_gree_get_values.return_value = initial_state_list
+    # Mock API send_command response
+    mock_api_send_command.return_value = {"r": 200, "opt": ["Pow"], "p": [0]}
+
+    # Act
+    device.turn_off()  # Call the synchronous service method
+
+    # Assert
+    mock_api_send_command.assert_called_once()
+    call_args, _ = mock_api_send_command.call_args
+    sent_opt_keys = call_args[0]
+    sent_p_values = call_args[1]
+    # Verify payload reflects Pow=0 command
+    assert "Pow" in sent_opt_keys
+    pow_index = sent_opt_keys.index("Pow")
+    assert sent_p_values[pow_index] == 0  # Power OFF

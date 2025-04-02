@@ -21,6 +21,9 @@ This file tracks the project's progress using a task list format.
 *   [X] Check type hints using `mypy`. (2025-04-01 19:16:32)
 *   [P] Address `pylint` issues (Partially complete for `device_api.py` and `climate.py`; paused due to extent of changes). (2025-04-01 19:35:05)
 *   [X] Create release automation script (`release.sh`). (2025-04-01 19:52:06)
+*   [X] Add integration tests for service calls (mocking only `_api.send_command`). (2025-04-01 20:43:55)
+*   [X] Format code using `black`. (2025-04-01 20:48:39)
+*   [X] Verify type hints using `mypy` after test additions. (2025-04-01 20:48:57)
 *   [ ] Define plan for improving the test suite.
 *   [ ] Update `homeassistant` dependency in `requirements_test.txt`.
 *   [ ] Install updated dependencies using `uv`.
@@ -28,10 +31,9 @@ This file tracks the project's progress using a task list format.
 *   [ ] Identify failing/inadequate tests.
 *   [ ] Propose test improvements/fixes.
 *   [ ] Implement test improvements/fixes.
-*   [X] Run tests (`pytest`) and verify fixes. (2025-04-01 19:12:35)
+*   [X] Run tests (`pytest`) and verify fixes. (2025-04-01 20:43:55)
 
 ## Next Steps
 
-*   Make `release.sh` executable (`chmod +x release.sh`) and test.
-*   Continue with test suite improvement plan.
+*   Continue with test suite improvement plan (general).
 *   Create a detailed plan for test suite improvement.
