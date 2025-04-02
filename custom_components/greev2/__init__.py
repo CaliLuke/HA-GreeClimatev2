@@ -1,4 +1,5 @@
 """The Gree Climate V2 integration."""
+
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -53,10 +54,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Finished unloading Gree Climate V2 entry: %s", entry.entry_id)
     return unload_ok
+
+
 # Optional: If options flow is implemented later
 # async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
 #     """Handle options update."""
 #     _LOGGER.debug("Handling options update for %s", entry.entry_id)
 #     # Reload the entry to apply changes.
 #     await hass.config_entries.async_reload(entry.entry_id)
-

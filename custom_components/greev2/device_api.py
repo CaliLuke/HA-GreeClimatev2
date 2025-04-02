@@ -78,7 +78,7 @@ class GreeDeviceApi:
             self._is_bound = False  # Explicitly set if no key provided
             _LOGGER.debug("Encryption key not provided yet, marked as not bound.")
 
-    def _bind_and_get_key_v1(self) -> bool:
+    async def _bind_and_get_key_v1(self) -> bool:
         """Retrieve device encryption key (V1/ECB)."""
         _LOGGER.info("Attempting V1 (ECB) binding to retrieve encryption key.")
         GENERIC_GREE_DEVICE_KEY: str = "a3K8Bx%2r8Y7#xDh"  # Specific to V1 binding
@@ -100,7 +100,7 @@ class GreeDeviceApi:
                 + '","uid": 0}'
             )
             # Fetch result using generic cipher
-            result: Dict[str, Any] = self._fetch_result(
+            result: Dict[str, Any] = await self._fetch_result(
                 generic_cipher, json_payload_to_send
             )
             new_key_str: str = result["key"]
@@ -110,12 +110,13 @@ class GreeDeviceApi:
             self._is_bound = True
             _LOGGER.info("V1 (ECB) binding successful. Key: %s", self._encryption_key)
             return True
-        except Exception as e:
+        # FIX: Catch more specific exceptions
+        except (socket.timeout, socket.error, ConnectionError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             _LOGGER.error("Error during V1 (ECB) binding! Error: %s", e, exc_info=True)
             self._is_bound = False
             return False
 
-    def _bind_and_get_key_v2(self) -> bool:
+    async def _bind_and_get_key_v2(self) -> bool:
         """Retrieve device encryption key (V2/GCM)."""
         _LOGGER.info("Attempting V2 (GCM) binding to retrieve encryption key.")
         # Use the default GCM key from const for binding
@@ -141,7 +142,7 @@ class GreeDeviceApi:
             )
             # Get GCM cipher using the generic key for fetching the result
             cipher_gcm: CipherType = self._get_gcm_cipher(generic_gcm_key)
-            result: Dict[str, Any] = self._fetch_result(
+            result: Dict[str, Any] = await self._fetch_result(
                 cipher_gcm, json_payload_to_send
             )
             new_key_str: str = result["key"]
@@ -150,12 +151,13 @@ class GreeDeviceApi:
             self._is_bound = True
             _LOGGER.info("V2 (GCM) binding successful. Key: %s", self._encryption_key)
             return True
-        except Exception as e:
+        # FIX: Catch more specific exceptions
+        except (socket.timeout, socket.error, ConnectionError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             _LOGGER.error("Error during V2 (GCM) binding! Error: %s", e, exc_info=True)
             self._is_bound = False
             return False
 
-    def bind_and_get_key(self) -> bool:
+    async def bind_and_get_key(self) -> bool:
         """Binds to the device and retrieves the encryption key based on version."""
         if self._is_bound:
             _LOGGER.debug("API already bound.")
@@ -167,9 +169,9 @@ class GreeDeviceApi:
         )
         key_retrieved: bool = False
         if self._encryption_version == 1:
-            key_retrieved = self._bind_and_get_key_v1()
+            key_retrieved = await self._bind_and_get_key_v1()
         elif self._encryption_version == 2:
-            key_retrieved = self._bind_and_get_key_v2()
+            key_retrieved = await self._bind_and_get_key_v2()
         else:
             _LOGGER.error(
                 "Unsupported encryption version %s for binding.",
@@ -195,7 +197,9 @@ class GreeDeviceApi:
             aes_block_size - len(s) % aes_block_size
         )
 
-    def _fetch_result(self, cipher: CipherType, json_payload: str) -> Dict[str, Any]:
+    async def _fetch_result(
+        self, cipher: CipherType, json_payload: str
+    ) -> Dict[str, Any]:
         """Sends a JSON payload to the device and returns the decrypted response pack."""
         _LOGGER.debug(
             "Fetching from %s:%s with timeout %s",
@@ -295,7 +299,7 @@ class GreeDeviceApi:
         return (pack_b64, tag_b64)
 
     # Add methods for binding, sending commands, receiving status, etc.
-    def send_command(
+    async def send_command(
         self, opt_keys: List[str], p_values: List[Any]
     ) -> Optional[Dict[str, Any]]:
         """Sends a command packet to the device."""
@@ -407,22 +411,20 @@ class GreeDeviceApi:
         try:
             # Call the internal fetch method
             _LOGGER.debug("Sending payload: %s", sent_json_payload)
-            received_json_pack: Dict[str, Any] = self._fetch_result(
+            received_json_pack: Dict[str, Any] = await self._fetch_result(
                 cipher_for_fetch, sent_json_payload
             )
             _LOGGER.debug("Received response pack: %s", received_json_pack)
             return received_json_pack
-        except (socket.timeout, socket.error) as e:
-            _LOGGER.error("Socket error sending command: %s", e)
+        except (socket.timeout, socket.error, ConnectionError) as e: # FIX: Catch specific socket/connection errors
+            _LOGGER.error("Socket/Connection error sending command: %s", e)
             return None
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e: # FIX: Catch specific data processing errors
             _LOGGER.error("Error processing response after sending command: %s", e)
             return None
-        except Exception as e:  # Catch any other unexpected errors
-            _LOGGER.error("Unexpected error sending command: %s", e, exc_info=True)
-            return None
+        # FIX: Removed broad Exception catch
 
-    def get_status(
+    async def get_status(
         self, property_names: List[str]
     ) -> Optional[List[Any]]:  # Changed return type hint
         """Fetches the status of specified properties from the device."""
@@ -492,8 +494,10 @@ class GreeDeviceApi:
         try:
             # Call the internal fetch method
             _LOGGER.debug("Sending status request payload: %s", sent_json_payload)
-            received_json_pack: Dict[str, Any] = self._fetch_result(
-                cipher_for_fetch, sent_json_payload
+            received_json_pack: Dict[str, Any] = (
+                await self._fetch_result(  # <<< Added await here
+                    cipher_for_fetch, sent_json_payload
+                )
             )
             _LOGGER.debug("Received status response pack: %s", received_json_pack)
 
@@ -524,15 +528,13 @@ class GreeDeviceApi:
                     received_json_pack["dat"],
                 )
                 return None
-        except (socket.timeout, socket.error) as e:
-            _LOGGER.error("Socket error getting status: %s", e)
+        except (socket.timeout, socket.error, ConnectionError) as e: # FIX: Catch specific socket/connection errors
+            _LOGGER.error("Socket/Connection error getting status: %s", e)
             return None
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e: # FIX: Catch specific data processing errors
             _LOGGER.error("Error processing response after getting status: %s", e)
             return None
-        except Exception as e:  # Catch any other unexpected errors
-            _LOGGER.error("Unexpected error getting status: %s", e, exc_info=True)
-            return None
+        # FIX: Removed broad Exception catch
 
     # Method definition should be at class level indentation
     def update_encryption_key(self, new_key: bytes) -> None:

@@ -1,11 +1,12 @@
 {
   "domain": "greev2",
   "name": "Gree AC v2",
-  "version": "2.14.28",
+  "version": "2.14.36",
   "documentation": "https://github.com/CaliLuke/HA-GreeClimatev2#readme",
   "dependencies": [],
   "codeowners": ["@caliluke"],
   "requirements": ["pycryptodome"],
   "config_flow": true,
-  "iot_class": "local_polling"
+  "iot_class": "local_polling",
+  "icon": "mdi:air-conditioner"
 }

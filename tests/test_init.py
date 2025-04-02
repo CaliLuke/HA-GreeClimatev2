@@ -6,7 +6,7 @@ import pytest
 from homeassistant.components.climate import HVACMode
 from homeassistant.core import HomeAssistant
 
-from custom_components.greev2.const import GCM_DEFAULT_KEY # Import from const
+from custom_components.greev2.const import GCM_DEFAULT_KEY  # Import from const
 
 # Import MOCK constants from conftest using absolute path relative to tests dir
 # No longer needed if using fixtures properly
@@ -72,7 +72,7 @@ async def test_init_with_gcm_encryption(
     # Key is None initially
     assert device._encryption_key is None
     assert device._api._encryption_key is None
-    assert device._api._cipher is None # API should NOT create cipher on init for V2
+    assert device._api._cipher is None  # API should NOT create cipher on init for V2
 
 
 @pytest.mark.skip(reason="Optional entities no longer configured in __init__")
