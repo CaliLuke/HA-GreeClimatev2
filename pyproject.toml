@@ -1,0 +1,43 @@
+[project]
+name = "ha-greeclimatev2"
+version = "0.1.0" # Placeholder version, can be updated later
+description = "Home Assistant Custom Component for Gree Climate V2"
+readme = "README.md"
+license = { file = "LICENSE" } # Assuming LICENSE file exists
+requires-python = ">=3.13" # Based on the recreated environment
+
+# Add core dependencies if any are needed outside of testing
+# dependencies = [
+#    "some-core-dependency",
+# ]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "simplejson",
+    "homeassistant", # uv will resolve the latest compatible version
+    "pycryptodome",
+    "black",
+    "mypy",
+]
+
+# Optional: Build system configuration if packaging
+# [build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+
+# Optional: Tool configurations (e.g., for black, pytest, ruff) can go here
+# [tool.black]
+# line-length = 88
+
+[tool.mypy]
+python_version = "3.13"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+exclude = [
+    "build/",
+    ".venv/", # Also exclude venv just in case
+]

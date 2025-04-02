@@ -1,25 +1,39 @@
 import base64
+import json  # Use standard json
 import logging
 import socket
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import json  # Use standard json
+import logging
+import socket
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from Crypto.Cipher import AES
-from homeassistant.components.climate.const import HVACMode
 
-try:
-    import simplejson
-except ImportError:
-    import json as simplejson
+# Simplify CipherType to Any for broader compatibility
+CipherType = Any
+
+from homeassistant.components.climate.const import HVACMode
 
 _LOGGER = logging.getLogger(__name__)
 
 # Placeholder constants for GCM (might need to be moved/configured)
-GCM_IV = b"\x54\x40\x78\x44\x49\x67\x5a\x51\x6c\x5e\x63\x13"
-GCM_ADD = b"qualcomm-test"
+GCM_IV: bytes = b"\x54\x40\x78\x44\x49\x67\x5a\x51\x6c\x5e\x63\x13"
+GCM_ADD: bytes = b"qualcomm-test"
 
 
 class GreeDeviceApi:
     """Handles communication with a Gree device."""
+
+    # Class Attributes with types
+    _host: str
+    _port: int
+    _mac: str
+    _timeout: int
+    _encryption_key: Optional[bytes]
+    _encryption_version: int
+    _cipher: Optional[CipherType]  # Type hint for the cipher object
 
     def __init__(
         self,
@@ -29,7 +43,7 @@ class GreeDeviceApi:
         timeout: int,
         encryption_key: Optional[bytes] = None,
         encryption_version: int = 1,
-    ):
+    ) -> None:
         """Initialize the API."""
         _LOGGER.debug(
             "Initializing GreeDeviceApi for host %s (version %s)",
@@ -45,6 +59,7 @@ class GreeDeviceApi:
         self._cipher = None
 
         if self._encryption_key and self._encryption_version == 1:
+            # Type checker might complain if AESCipherECB wasn't imported, but Any works
             self._cipher = AES.new(self._encryption_key, AES.MODE_ECB)
         elif not self._encryption_key:
             _LOGGER.debug("Encryption key not provided yet.")
@@ -57,12 +72,12 @@ class GreeDeviceApi:
     # Pad helper method to help us get the right string for encrypting
     def _pad(self, s: str) -> str:
         """Pads the string s to a multiple of the AES block size (16)."""
-        aes_block_size = 16
+        aes_block_size: int = 16
         return s + (aes_block_size - len(s) % aes_block_size) * chr(
             aes_block_size - len(s) % aes_block_size
         )
 
-    def _fetch_result(self, cipher, json_payload: str) -> dict:
+    def _fetch_result(self, cipher: CipherType, json_payload: str) -> Dict[str, Any]:
         """Sends a JSON payload to the device and returns the decrypted response pack."""
         _LOGGER.debug(
             "Fetching from %s:%s with timeout %s",
@@ -71,20 +86,21 @@ class GreeDeviceApi:
             self._timeout,
         )
         # TODO: Handle socket errors, timeouts, JSON decoding errors, decryption errors gracefully
-        client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client_sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_sock.settimeout(self._timeout)
+        data: bytes = b""
         try:
             client_sock.sendto(bytes(json_payload, "utf-8"), (self._host, self._port))
             data, _ = client_sock.recvfrom(64000)
         finally:
             client_sock.close()
 
-        received_json = simplejson.loads(data)
-        pack = received_json["pack"]
-        base64decoded_pack = base64.b64decode(pack)
+        received_json: Dict[str, Any] = json.loads(data)
+        pack: str = received_json["pack"]
+        base64decoded_pack: bytes = base64.b64decode(pack)
 
         # Decryption logic
-        decrypted_pack = b""
+        decrypted_pack: bytes = b""
         if self._encryption_version == 1:
             # Use the stored ECB cipher
             if not self._cipher:
@@ -99,6 +115,7 @@ class GreeDeviceApi:
                 else:
                     # Cannot proceed without key/cipher
                     raise ValueError("Cannot decrypt V1 data: key/cipher missing.")
+            # Assuming self._cipher is EcbMode or compatible
             decrypted_pack = self._cipher.decrypt(base64decoded_pack)
         elif self._encryption_version == 2:
             # Need the GCM cipher passed in (which is the 'cipher' argument).
@@ -106,13 +123,13 @@ class GreeDeviceApi:
             # or the device key for subsequent commands/status).
             # Do NOT check self._encryption_key here, as it might be None during binding.
             # For now, assume the passed 'cipher' arg IS the correct GCM cipher for decrypt
-            tag = received_json["tag"]
+            tag_b64: str = received_json["tag"]
+            tag: bytes = base64.b64decode(tag_b64)
             # Explicitly try the decryption/verification step
             try:
                 _LOGGER.debug("Attempting GCM decrypt_and_verify...")
-                decrypted_pack = cipher.decrypt_and_verify(
-                    base64decoded_pack, base64.b64decode(tag)
-                )
+                # Assuming cipher is GcmMode or compatible
+                decrypted_pack = cipher.decrypt_and_verify(base64decoded_pack, tag)
                 _LOGGER.debug("GCM decrypt_and_verify successful.")
             except ValueError as e:
                 _LOGGER.error(
@@ -120,37 +137,50 @@ class GreeDeviceApi:
                 )
                 # Re-raise the error to be caught by the caller (_fetch_result's caller)
                 raise  # Re-raise the ValueError
-                raise  # Re-raise exception
         else:
             raise ValueError(
                 f"Unsupported encryption version: {self._encryption_version}"
             )
 
         # Decode and remove padding/trailing characters
-        decoded_pack = decrypted_pack.decode("utf-8")
+        decoded_pack: str = decrypted_pack.decode("utf-8")
         # This stripping logic might be fragile, needs review
-        replaced_pack = decoded_pack.replace("\x0f", "").replace(
-            decoded_pack[decoded_pack.rindex("}") + 1 :], ""
-        )
-        loaded_json_pack = simplejson.loads(replaced_pack)
+        # Find the last '}' and strip everything after it
+        last_brace_index: int = decoded_pack.rfind("}")
+        if last_brace_index != -1:
+            replaced_pack: str = decoded_pack[: last_brace_index + 1]
+        else:
+            # Handle case where '}' is not found, though unlikely for valid JSON
+            replaced_pack = decoded_pack
+
+        # Remove potential padding characters like \x0f more robustly if needed
+        # replaced_pack = replaced_pack.rstrip('\x0f') # Example if needed
+
+        loaded_json_pack: Dict[str, Any] = json.loads(replaced_pack)
         return loaded_json_pack
 
-    def _get_gcm_cipher(self, key: bytes) -> AES.MODE_GCM:
+    def _get_gcm_cipher(
+        self, key: bytes
+    ) -> CipherType:  # Return type depends on fallback
         """Creates a GCM cipher instance with the specified key."""
-        cipher = AES.new(key, AES.MODE_GCM, nonce=GCM_IV)
+        cipher: CipherType = AES.new(key, AES.MODE_GCM, nonce=GCM_IV)
+        # AES.update is part of the cipher object protocol
         cipher.update(GCM_ADD)
         return cipher
 
-    def _encrypt_gcm(self, key: bytes, plaintext: str) -> tuple[str, str]:
+    def _encrypt_gcm(self, key: bytes, plaintext: str) -> Tuple[str, str]:
         """Encrypts plaintext using GCM and returns base64 encoded pack and tag."""
-        cipher = self._get_gcm_cipher(key)
+        cipher: CipherType = self._get_gcm_cipher(key)
+        # AES.encrypt_and_digest is part of the cipher object protocol
         encrypted_data, tag = cipher.encrypt_and_digest(plaintext.encode("utf8"))
-        pack = base64.b64encode(encrypted_data).decode("utf-8")
-        tag = base64.b64encode(tag).decode("utf-8")
-        return (pack, tag)
+        pack_b64: str = base64.b64encode(encrypted_data).decode("utf-8")
+        tag_b64: str = base64.b64encode(tag).decode("utf-8")
+        return (pack_b64, tag_b64)
 
     # Add methods for binding, sending commands, receiving status, etc.
-    def send_command(self, opt_keys: list[str], p_values: list) -> Optional[dict]:
+    def send_command(
+        self, opt_keys: List[str], p_values: List[Any]
+    ) -> Optional[Dict[str, Any]]:
         """Sends a command packet to the device."""
         _LOGGER.debug("Preparing to send command with opt=%s, p=%s", opt_keys, p_values)
 
@@ -165,7 +195,7 @@ class GreeDeviceApi:
 
         # Convert p_values - Note: Gree protocol might expect ints for bools, strings for enums etc.
         # This conversion might need refinement based on actual device behavior.
-        converted_p_values = []
+        converted_p_values: List[Any] = []
         for val in p_values:
             if isinstance(val, bool):
                 converted_p_values.append(int(val))
@@ -190,21 +220,23 @@ class GreeDeviceApi:
                 # Decide handling - maybe default to 0 or raise error?
                 converted_p_values.append(0)  # Defaulting to 0 for now
 
-        command_payload = {"opt": opt_keys, "p": converted_p_values, "t": "cmd"}
+        command_payload: Dict[str, Any] = {
+            "opt": opt_keys,
+            "p": converted_p_values,
+            "t": "cmd",
+        }
 
-        # Construct the inner JSON command payload string using simplejson
+        # Construct the inner JSON command payload string using json
         try:
-            state_pack_json = simplejson.dumps(command_payload, separators=(",", ":"))
+            state_pack_json: str = json.dumps(command_payload, separators=(",", ":"))
         except TypeError as e:
             _LOGGER.error("Error serializing command payload to JSON: %s", e)
             return None
 
         _LOGGER.debug("Constructed state_pack_json: %s", state_pack_json)
 
-        sent_json_payload = None
-        cipher_for_fetch = (
-            None  # Cipher needed for _fetch_result (mainly for v2 decryption)
-        )
+        sent_json_payload: Optional[str] = None
+        cipher_for_fetch: Optional[CipherType] = None  # Cipher needed for _fetch_result
 
         if self._encryption_version == 1:
             if not self._cipher:
@@ -213,10 +245,9 @@ class GreeDeviceApi:
                 return None  # Or raise exception
             cipher_for_fetch = self._cipher  # Use the instance's ECB cipher
 
-            padded_state = self._pad(state_pack_json).encode("utf8")
-            encrypted_pack = base64.b64encode(
-                cipher_for_fetch.encrypt(padded_state)
-            ).decode("utf-8")
+            padded_state: bytes = self._pad(state_pack_json).encode("utf8")
+            encrypted_pack_bytes: bytes = cipher_for_fetch.encrypt(padded_state)
+            encrypted_pack: str = base64.b64encode(encrypted_pack_bytes).decode("utf-8")
 
             sent_json_payload = (
                 f'{{"cid":"app","i":0,"pack":"{encrypted_pack}",'
@@ -255,36 +286,38 @@ class GreeDeviceApi:
         try:
             # Call the internal fetch method
             _LOGGER.debug("Sending payload: %s", sent_json_payload)
-            received_json_pack = self._fetch_result(cipher_for_fetch, sent_json_payload)
+            received_json_pack: Dict[str, Any] = self._fetch_result(
+                cipher_for_fetch, sent_json_payload
+            )
             _LOGGER.debug("Received response pack: %s", received_json_pack)
             return received_json_pack
         except (socket.timeout, socket.error) as e:
             _LOGGER.error("Socket error sending command: %s", e)
             return None
-        except (simplejson.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError) as e:
             _LOGGER.error("Error processing response after sending command: %s", e)
             return None
         except Exception as e:  # Catch any other unexpected errors
             _LOGGER.error("Unexpected error sending command: %s", e, exc_info=True)
             return None
 
-    def get_status(self, property_names: list[str]) -> Optional[dict]:
+    def get_status(self, property_names: List[str]) -> Optional[Dict[str, Any]]:
         """Fetches the status of specified properties from the device."""
         _LOGGER.debug("Preparing to get status for properties: %s", property_names)
 
         # Construct the inner JSON status request payload
         try:
-            cols_json = simplejson.dumps(property_names)
+            cols_json: str = json.dumps(property_names)
         except TypeError as e:
             _LOGGER.error("Error serializing property names to JSON: %s", e)
             return None
 
-        plaintext_payload = f'{{"cols":{cols_json},"mac":"{self._mac}","t":"status"}}'
-
-        sent_json_payload = None
-        cipher_for_fetch = (
-            None  # Cipher needed for _fetch_result (mainly for v2 decryption)
+        plaintext_payload: str = (
+            f'{{"cols":{cols_json},"mac":"{self._mac}","t":"status"}}'
         )
+
+        sent_json_payload: Optional[str] = None
+        cipher_for_fetch: Optional[CipherType] = None  # Cipher needed for _fetch_result
 
         if self._encryption_version == 1:
             if not self._cipher:
@@ -292,10 +325,9 @@ class GreeDeviceApi:
                 return None  # Or raise exception
             cipher_for_fetch = self._cipher
 
-            padded_state = self._pad(plaintext_payload).encode("utf8")
-            encrypted_pack = base64.b64encode(
-                cipher_for_fetch.encrypt(padded_state)
-            ).decode("utf-8")
+            padded_state: bytes = self._pad(plaintext_payload).encode("utf8")
+            encrypted_pack_bytes: bytes = cipher_for_fetch.encrypt(padded_state)
+            encrypted_pack: str = base64.b64encode(encrypted_pack_bytes).decode("utf-8")
 
             sent_json_payload = (
                 f'{{"cid":"app","i":0,"pack":"{encrypted_pack}",'
@@ -333,11 +365,14 @@ class GreeDeviceApi:
         try:
             # Call the internal fetch method
             _LOGGER.debug("Sending status request payload: %s", sent_json_payload)
-            received_json_pack = self._fetch_result(cipher_for_fetch, sent_json_payload)
+            received_json_pack: Dict[str, Any] = self._fetch_result(
+                cipher_for_fetch, sent_json_payload
+            )
             _LOGGER.debug("Received status response pack: %s", received_json_pack)
 
             # Extract the 'dat' field which contains the status values
             if "dat" in received_json_pack:
+                # Assuming 'dat' contains a list or dict, adjust type if needed
                 return received_json_pack["dat"]
             else:
                 _LOGGER.error(
@@ -347,7 +382,7 @@ class GreeDeviceApi:
         except (socket.timeout, socket.error) as e:
             _LOGGER.error("Socket error getting status: %s", e)
             return None
-        except (simplejson.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError) as e:
             _LOGGER.error("Error processing response after getting status: %s", e)
             return None
         except Exception as e:  # Catch any other unexpected errors
@@ -372,7 +407,5 @@ class GreeDeviceApi:
         # For V2 (GCM) or other versions, we don't store a persistent cipher instance
         # based on the device key in self._cipher. Ensure it's None if set previously.
         elif self._cipher is not None:
+            # Only reset if it was somehow set (e.g., during V1 init then version changed)
             self._cipher = None
-
-
-# Misplaced except blocks removed - will be added back after the try block
