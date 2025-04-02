@@ -4,7 +4,7 @@ import socket  # For exception handling
 
 import voluptuous as vol
 
-from homeassistant import config_entries, exceptions
+from homeassistant import config_entries, exceptions, data_entry_flow # Added data_entry_flow
 from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
@@ -143,7 +143,7 @@ class GreeV2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=info["title"], data=user_input)
 
             # Reordered except blocks: AbortFlow first
-            except config_entries.AbortFlow as af: # Catch abort flow specifically
+            except data_entry_flow.AbortFlow as af: # Use data_entry_flow.AbortFlow
                 _LOGGER.info("Config flow aborted: %s", af.reason)
                 # Re-raise AbortFlow to let HA handle it (shows the abort message)
                 raise af

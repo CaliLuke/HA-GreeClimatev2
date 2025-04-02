@@ -16,6 +16,10 @@ DEFAULT_TARGET_TEMP_STEP: float = 1.0
 DEFAULT_MIN_TEMP: int = 16
 DEFAULT_MAX_TEMP: int = 30
 DEFAULT_SCAN_INTERVAL_SECONDS: int = 60
+DEFAULT_HORIZONTAL_SWING: bool = False # Default based on previous YAML schema
+DEFAULT_DISABLE_AVAILABILITY_CHECK: bool = False # Default based on previous YAML schema
+DEFAULT_MAX_ONLINE_ATTEMPTS: int = 3 # Default based on previous YAML schema
+
 
 # Configuration constants
 CONF_NAME: str = "name"

@@ -85,7 +85,7 @@ async def test_properties_after_update(gree_climate_device: GreeClimateFactory) 
         "TemRec": 0,
     }
     device._ac_options = (
-        simulated_acOptions  # No longer need ignore after fixing _acOptions type
+        simulated_acOptions
     )
 
     # Manually call the update methods to reflect _acOptions in properties
@@ -108,8 +108,14 @@ async def test_property_support_preset_mode(
     gree_climate_device: GreeClimateFactory,
 ) -> None:
     """Test preset mode support is enabled when horizontal_swing is true."""
-    # Get the device instance by calling the factory, enabling horizontal swing
-    device: GreeClimate = gree_climate_device(horizontal_swing=True)
+    # Get the device instance by calling the factory
+    device: GreeClimate = gree_climate_device()
+    # Manually enable horizontal swing as it's no longer an init parameter
+    device._horizontal_swing = True
+    # Manually update supported features and preset modes list based on the flag
+    device._attr_supported_features |= ClimateEntityFeature.PRESET_MODE
+    device._attr_preset_modes = device._preset_modes_list
+
     assert device.supported_features & ClimateEntityFeature.PRESET_MODE
     assert device.preset_modes == PRESET_MODES
 

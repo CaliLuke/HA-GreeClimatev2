@@ -8,29 +8,27 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Union
 
 # Third-party imports
-
-# Third-party imports
 import voluptuous as vol
 from Crypto.Cipher import AES
 
 # Home Assistant imports
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components.climate import (
-    PLATFORM_SCHEMA as CLIMATE_PLATFORM_SCHEMA,
+    # PLATFORM_SCHEMA is no longer used
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
 )
 
-# Import HA constants used directly (avoiding CONF_ constants here)
+# Import HA constants used directly
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     ATTR_UNIT_OF_MEASUREMENT,
-    CONF_HOST,  # Keep original HA const for schema validation if needed elsewhere
-    CONF_MAC,  # Keep original HA const for schema validation if needed elsewhere
-    CONF_NAME,  # Keep original HA const for schema validation if needed elsewhere
-    CONF_PORT,  # Keep original HA const for schema validation if needed elsewhere
-    CONF_TIMEOUT,  # Keep original HA const for schema validation if needed elsewhere
+    CONF_HOST,
+    CONF_MAC,
+    CONF_NAME,
+    CONF_PORT, # Keep for const default reference
+    CONF_TIMEOUT, # Keep for const default reference
     STATE_OFF,
     STATE_ON,
     STATE_UNKNOWN,
@@ -40,145 +38,66 @@ from homeassistant.core import Event, HomeAssistant, State, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
     EventStateChangedData,
-    async_track_state_change_event,
+    async_track_state_change_event, # Keep for potential future use in options flow
 )
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.device_registry import format_mac
+
 
 # Local imports
 from .device_api import GreeDeviceApi
-from . import const
+# Import constants needed for defaults and config keys
+from . import const # Keep this top-level import
+from .const import (
+    CONF_ENCRYPTION_VERSION,
+    DEFAULT_NAME,
+    DEFAULT_PORT,
+    DEFAULT_TIMEOUT,
+    DEFAULT_TARGET_TEMP_STEP,
+    # Import correct mode lists and new defaults
+    HVAC_MODES, # Corrected name
+    FAN_MODES, # Corrected name
+    SWING_MODES, # Corrected name
+    PRESET_MODES, # Corrected name
+    DEFAULT_HORIZONTAL_SWING, # Corrected import
+    DEFAULT_DISABLE_AVAILABILITY_CHECK, # Corrected import
+    DEFAULT_MAX_ONLINE_ATTEMPTS, # Corrected import
+    MIN_TEMP,
+    MAX_TEMP,
+    SUPPORT_FLAGS,
+    TEMP_OFFSET, # Keep if used in update_ha_current_temperature
+)
 
 
 # Simplify CipherType to Any for broader compatibility
 CipherType = Any
 
-REQUIREMENTS: List[str] = [
-    "pycryptodome"
-]  # This might be obsolete if managed by manifest.json
+# REQUIREMENTS list is obsolete, managed by manifest.json
 
 _LOGGER = logging.getLogger(__name__)
 
 
-PLATFORM_SCHEMA: vol.Schema = CLIMATE_PLATFORM_SCHEMA.extend(  # Use voluptuous.Schema
-    {
-        vol.Optional(const.CONF_NAME, default=const.DEFAULT_NAME): cv.string,
-        vol.Required(const.CONF_HOST): cv.string,
-        vol.Required(const.CONF_PORT, default=const.DEFAULT_PORT): cv.positive_int,
-        vol.Required(const.CONF_MAC): cv.string,
-        vol.Optional(
-            const.CONF_TIMEOUT, default=const.DEFAULT_TIMEOUT
-        ): cv.positive_int,
-        vol.Optional(
-            const.CONF_TARGET_TEMP_STEP, default=const.DEFAULT_TARGET_TEMP_STEP
-        ): vol.Coerce(float),
-        vol.Optional(const.CONF_TEMP_SENSOR): cv.entity_id,
-        vol.Optional(const.CONF_LIGHTS): cv.entity_id,
-        vol.Optional(const.CONF_XFAN): cv.entity_id,
-        vol.Optional(const.CONF_HEALTH): cv.entity_id,
-        vol.Optional(const.CONF_POWERSAVE): cv.entity_id,
-        vol.Optional(const.CONF_SLEEP): cv.entity_id,
-        vol.Optional(const.CONF_EIGHTDEGHEAT): cv.entity_id,
-        vol.Optional(const.CONF_AIR): cv.entity_id,
-        vol.Optional(const.CONF_ENCRYPTION_KEY): cv.string,
-        vol.Optional(const.CONF_UID): cv.positive_int,
-        vol.Optional(const.CONF_AUTO_XFAN): cv.entity_id,
-        vol.Optional(const.CONF_AUTO_LIGHT): cv.entity_id,
-        vol.Optional(const.CONF_TARGET_TEMP): cv.entity_id,
-        vol.Optional(const.CONF_ENCRYPTION_VERSION, default=1): cv.positive_int,
-        vol.Optional(const.CONF_HORIZONTAL_SWING, default=False): cv.boolean,
-        vol.Optional(const.CONF_ANTI_DIRECT_BLOW): cv.entity_id,
-        vol.Optional(const.CONF_DISABLE_AVAILABLE_CHECK, default=False): cv.boolean,
-        vol.Optional(const.CONF_MAX_ONLINE_ATTEMPTS, default=3): cv.positive_int,
-        vol.Optional(const.CONF_LIGHT_SENSOR): cv.entity_id,
-    }
-)
+# PLATFORM_SCHEMA is removed as configuration is via Config Flow
 
 
-async def async_setup_platform(
+# async_setup_platform is removed as setup is via Config Flow
+
+
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_devices: AddEntitiesCallback,
-    discovery_info: Optional[
-        DiscoveryInfoType
-    ] = None,  # pylint: disable=unused-argument
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Gree Climate platform."""
-    # discovery_info is typically unused in modern YAML setup, but kept for signature compatibility
-    _LOGGER.info("Setting up Gree climate platform")
-    name: str = config[const.CONF_NAME]  # Use direct access after schema validation
-    ip_addr: str = config[const.CONF_HOST]
-    port: int = config[const.CONF_PORT]
-    mac_addr_str: str = config[const.CONF_MAC]
-    mac_addr: bytes = mac_addr_str.encode().replace(b":", b"")
-    timeout: int = config[const.CONF_TIMEOUT]
+    """Set up the Gree climate platform from a config entry."""
+    _LOGGER.info("Setting up Gree climate platform entry: %s", entry.entry_id)
 
-    target_temp_step: float = config[const.CONF_TARGET_TEMP_STEP]
-    temp_sensor_entity_id: Optional[str] = config.get(const.CONF_TEMP_SENSOR)
-    lights_entity_id: Optional[str] = config.get(const.CONF_LIGHTS)
-    xfan_entity_id: Optional[str] = config.get(const.CONF_XFAN)
-    health_entity_id: Optional[str] = config.get(const.CONF_HEALTH)
-    powersave_entity_id: Optional[str] = config.get(const.CONF_POWERSAVE)
-    sleep_entity_id: Optional[str] = config.get(const.CONF_SLEEP)
-    eightdegheat_entity_id: Optional[str] = config.get(const.CONF_EIGHTDEGHEAT)
-    air_entity_id: Optional[str] = config.get(const.CONF_AIR)
-    target_temp_entity_id: Optional[str] = config.get(const.CONF_TARGET_TEMP)
-    hvac_modes: List[HVACMode] = const.HVAC_MODES  # Use constant
-    fan_modes: List[str] = const.FAN_MODES  # Use constant
-    swing_modes: List[str] = const.SWING_MODES  # Use constant
-    preset_modes: List[str] = const.PRESET_MODES  # Use constant
-    encryption_key: Optional[str] = config.get(const.CONF_ENCRYPTION_KEY)
-    uid: Optional[int] = config.get(const.CONF_UID)
-    auto_xfan_entity_id: Optional[str] = config.get(const.CONF_AUTO_XFAN)
-    auto_light_entity_id: Optional[str] = config.get(const.CONF_AUTO_LIGHT)
-    horizontal_swing: bool = config[const.CONF_HORIZONTAL_SWING]  # Use direct access
-    anti_direct_blow_entity_id: Optional[str] = config.get(const.CONF_ANTI_DIRECT_BLOW)
-    light_sensor_entity_id: Optional[str] = config.get(const.CONF_LIGHT_SENSOR)
-    encryption_version: int = config[const.CONF_ENCRYPTION_VERSION]  # Use direct access
-    disable_available_check: bool = config[
-        const.CONF_DISABLE_AVAILABLE_CHECK
-    ]  # Use direct access
-    max_online_attempts: int = config[
-        const.CONF_MAX_ONLINE_ATTEMPTS
-    ]  # Use direct access
+    # Instantiate the GreeClimate entity using the config entry
+    # Pass hass and the entry itself to the constructor
+    device = GreeClimate(hass, entry)
 
-    _LOGGER.info("Adding Gree climate device to hass")
-
-    async_add_devices(
-        [
-            GreeClimate(
-                hass,
-                name,
-                ip_addr,
-                port,
-                mac_addr,
-                timeout,
-                target_temp_step,
-                temp_sensor_entity_id,
-                lights_entity_id,
-                xfan_entity_id,
-                health_entity_id,
-                powersave_entity_id,
-                sleep_entity_id,
-                eightdegheat_entity_id,
-                air_entity_id,
-                target_temp_entity_id,
-                anti_direct_blow_entity_id,
-                hvac_modes,
-                fan_modes,
-                swing_modes,
-                preset_modes,
-                auto_xfan_entity_id,
-                auto_light_entity_id,
-                horizontal_swing,
-                light_sensor_entity_id,
-                encryption_version,
-                disable_available_check,
-                max_online_attempts,
-                encryption_key,
-                uid,
-            )
-        ]
-    )
+    # Add the entity to Home Assistant
+    async_add_entities([device])
 
 
 class GreeClimate(ClimateEntity):
@@ -194,9 +113,9 @@ class GreeClimate(ClimateEntity):
     _attr_swing_modes: List[str]
     _attr_preset_modes: Optional[List[str]]  # Can be None if horizontal_swing is false
     _attr_target_temperature_step: float
-    _attr_min_temp: float = float(const.MIN_TEMP)
-    _attr_max_temp: float = float(const.MAX_TEMP)
-    _attr_supported_features: ClimateEntityFeature = const.SUPPORT_FLAGS  # Base flags
+    _attr_min_temp: float = float(MIN_TEMP)
+    _attr_max_temp: float = float(MAX_TEMP)
+    _attr_supported_features: ClimateEntityFeature = SUPPORT_FLAGS  # Base flags
 
     # Internal state
     _ip_addr: str
@@ -214,19 +133,11 @@ class GreeClimate(ClimateEntity):
     _swing_mode: Optional[str] = None
     _preset_mode: Optional[str] = None
 
-    _temp_sensor_entity_id: Optional[str]
-    _lights_entity_id: Optional[str]
-    _xfan_entity_id: Optional[str]
-    _health_entity_id: Optional[str]
-    _powersave_entity_id: Optional[str]
-    _sleep_entity_id: Optional[str]
-    _eightdegheat_entity_id: Optional[str]
-    _air_entity_id: Optional[str]
-    _target_temp_entity_id: Optional[str]
-    _anti_direct_blow_entity_id: Optional[str]
-    _light_sensor_entity_id: Optional[str]
-    _auto_xfan_entity_id: Optional[str]
-    _auto_light_entity_id: Optional[str]
+    # Optional entity IDs are no longer configured via YAML/init
+    # These might be reintroduced later via Options Flow if needed
+    # _temp_sensor_entity_id: Optional[str] = None
+    # _lights_entity_id: Optional[str] = None
+    # ... etc ...
 
     _horizontal_swing: bool
     _has_temp_sensor: Optional[bool] = None
@@ -244,13 +155,14 @@ class GreeClimate(ClimateEntity):
     _current_anti_direct_blow: Optional[str] = None
 
     _first_time_run: bool = True
+    # Flags previously controlled by optional entities - manage via Options Flow later?
     _enable_light_sensor: bool = False
     _auto_light: bool = False
     _auto_xfan: bool = False
 
     encryption_version: int
-    _encryption_key: Optional[bytes] = None
-    _uid: int
+    _encryption_key: Optional[bytes] = None # Key is retrieved during bind
+    _uid: int = 0 # UID not used in config flow setup
     _api: GreeDeviceApi
     # CIPHER is deprecated, managed by _api
 
@@ -262,91 +174,50 @@ class GreeClimate(ClimateEntity):
     # Deprecated, remove if not used by HA core anymore
     _enable_turn_on_off_backwards_compatibility: bool = False
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        name: str,
-        ip_addr: str,
-        port: int,
-        mac_addr: bytes,  # Passed as bytes from setup
-        timeout: int,
-        target_temp_step: float,
-        temp_sensor_entity_id: Optional[str],
-        lights_entity_id: Optional[str],
-        xfan_entity_id: Optional[str],
-        health_entity_id: Optional[str],
-        powersave_entity_id: Optional[str],
-        sleep_entity_id: Optional[str],
-        eightdegheat_entity_id: Optional[str],
-        air_entity_id: Optional[str],
-        target_temp_entity_id: Optional[str],
-        anti_direct_blow_entity_id: Optional[str],
-        hvac_modes: List[HVACMode],
-        fan_modes: List[str],
-        swing_modes: List[str],
-        preset_modes: List[str],
-        auto_xfan_entity_id: Optional[str],
-        auto_light_entity_id: Optional[str],
-        horizontal_swing: bool,
-        light_sensor_entity_id: Optional[str],
-        encryption_version: int,
-        disable_available_check: bool,
-        max_online_attempts: int,
-        encryption_key: Optional[str] = None,  # Passed as string from config
-        uid: Optional[int] = None,
-    ) -> None:
-        """Initialize the Gree Climate device."""
-        _LOGGER.info("Initialize the GREE climate device")
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the Gree Climate device from a config entry."""
+        _LOGGER.info("Initialize the GREE climate device from config entry: %s", entry.entry_id)
         self.hass = hass
-        self._attr_name = name  # Use _attr_ prefix for HA properties
-        self._ip_addr = ip_addr
-        self._port = port
-        self._mac_addr = mac_addr.decode("utf-8").lower()
-        self._timeout = timeout
-        self._attr_unique_id = "climate.gree_" + self._mac_addr  # Use _attr_ prefix
+        self._entry = entry # Store entry for potential future use (e.g., options flow)
+
+        # --- Extract data from ConfigEntry ---
+        data = entry.data
+        self._attr_name = data.get(CONF_NAME, DEFAULT_NAME)
+        self._ip_addr = data[CONF_HOST] # Required field in config flow
+        self._mac_addr = format_mac(data[CONF_MAC]) # Required, format it
+        # Get encryption version, default to 2 if missing (should be present from config flow)
+        try:
+            self.encryption_version = int(data.get(CONF_ENCRYPTION_VERSION, "2"))
+        except (ValueError, TypeError):
+            _LOGGER.warning("Invalid encryption version '%s' in config entry, defaulting to 2", data.get(CONF_ENCRYPTION_VERSION))
+            self.encryption_version = 2
+
+        # --- Use Defaults for other parameters ---
+        # TODO: Consider making these configurable via Options Flow later
+        self._port = DEFAULT_PORT
+        self._timeout = DEFAULT_TIMEOUT
+        self._attr_target_temperature_step = DEFAULT_TARGET_TEMP_STEP
+        # Use corrected constant names for modes/settings
+        self._attr_hvac_modes = HVAC_MODES
+        self._attr_fan_modes = FAN_MODES
+        self._attr_swing_modes = SWING_MODES
+        self._preset_modes_list = PRESET_MODES
+        self._horizontal_swing = DEFAULT_HORIZONTAL_SWING
+        self._disable_available_check = DEFAULT_DISABLE_AVAILABILITY_CHECK
+        self._max_online_attempts = DEFAULT_MAX_ONLINE_ATTEMPTS
+
+        # --- Set initial internal state ---
+        self._attr_unique_id = entry.unique_id or f"climate.gree_{self._mac_addr}" # Use entry unique_id if available
         self._device_online = None
         self._online_attempts = 0
-        self._max_online_attempts = max_online_attempts
-        self._disable_available_check = disable_available_check
-
         self._target_temperature = None
-        self._attr_target_temperature_step = target_temp_step  # Use _attr_ prefix
-        # self._unit_of_measurement = UnitOfTemperature.CELSIUS # Set via _attr_temperature_unit
-
-        self._attr_hvac_modes = hvac_modes  # Use _attr_ prefix
         self._hvac_mode = HVACMode.OFF
-        self._attr_fan_modes = fan_modes  # Use _attr_ prefix
         self._fan_mode = None
-        self._attr_swing_modes = swing_modes  # Use _attr_ prefix
         self._swing_mode = None
-        self._preset_modes_list = preset_modes  # Store original list
         self._preset_mode = None
-
-        self._temp_sensor_entity_id = temp_sensor_entity_id
-        self._lights_entity_id = lights_entity_id
-        self._xfan_entity_id = xfan_entity_id
-        self._health_entity_id = health_entity_id
-        self._powersave_entity_id = powersave_entity_id
-        self._sleep_entity_id = sleep_entity_id
-        self._eightdegheat_entity_id = eightdegheat_entity_id
-        self._air_entity_id = air_entity_id
-        self._target_temp_entity_id = target_temp_entity_id
-        self._anti_direct_blow_entity_id = anti_direct_blow_entity_id
-        self._light_sensor_entity_id = light_sensor_entity_id
-        self._auto_xfan_entity_id = auto_xfan_entity_id
-        self._auto_light_entity_id = auto_light_entity_id
-
-        self._horizontal_swing = horizontal_swing
-        if self._horizontal_swing:
-            self._attr_preset_modes = self._preset_modes_list  # Use _attr_ prefix
-            self._attr_supported_features |= ClimateEntityFeature.PRESET_MODE
-        else:
-            self._attr_preset_modes = None
-
         self._has_temp_sensor = None
         self._has_anti_direct_blow = None
         self._has_light_sensor = None
-
         self._current_temperature = None
         self._current_lights = None
         self._current_xfan = None
@@ -356,206 +227,43 @@ class GreeClimate(ClimateEntity):
         self._current_eightdegheat = None
         self._current_air = None
         self._current_anti_direct_blow = None
-
         self._first_time_run = True
+        self._encryption_key = None # Key will be obtained during bind
 
-        self.encryption_version = encryption_version
-        # self.CIPHER = None # Deprecated
+        # --- Configure Preset Modes based on horizontal swing ---
+        if self._horizontal_swing:
+            self._attr_preset_modes = self._preset_modes_list
+            self._attr_supported_features |= ClimateEntityFeature.PRESET_MODE
+        else:
+            self._attr_preset_modes = None
 
-        # Instantiate the API handler
+        # --- Instantiate the API handler ---
+        # Key is not passed here; it will be obtained during the first update/bind
         self._api = GreeDeviceApi(
-            host=ip_addr,
-            port=port,
-            mac=self._mac_addr,  # Pass decoded MAC
-            timeout=timeout,
-            encryption_key=(
-                encryption_key.encode("utf8") if encryption_key else None
-            ),  # Pass key if exists
-            encryption_version=encryption_version,  # Pass version
+            host=self._ip_addr,
+            port=self._port,
+            mac=self._mac_addr,
+            timeout=self._timeout,
+            encryption_key=None, # Key obtained via bind_and_get_key
+            encryption_version=self.encryption_version,
         )
 
-        if encryption_key:
-            _LOGGER.info("Using configured encryption key: %s", encryption_key)
-            self._encryption_key = encryption_key.encode("utf8")
-            # Store reference to key in GreeClimate for now, might be removable later
-            if encryption_version == 1:
-                # CIPHER object is now managed by GreeDeviceApi for v1
-                pass  # Handled by API init
-            elif encryption_version != 2:
-                _LOGGER.error(
-                    "Encryption version %s is not implemented.",
-                    self.encryption_version,  # Use instance var
-                )
-        else:
-            self._encryption_key = None
-
-        if uid is not None:  # Check for None explicitly
-            self._uid = uid
-        else:
-            self._uid = 0
-
-        # Initialize _ac_options with expected keys and None values
+        # --- Initialize _ac_options and fetch list ---
         self._ac_options = {
-            "Pow": None,
-            "Mod": None,
-            "SetTem": None,
-            "WdSpd": None,
-            "Air": None,
-            "Blo": None,
-            "Health": None,
-            "SwhSlp": None,
-            "Lig": None,
-            "SwingLfRig": None,
-            "SwUpDn": None,
-            "Quiet": None,
-            "Tur": None,
-            "StHt": None,
-            "TemUn": None,
-            "HeatCoolType": None,
-            "TemRec": None,
-            "SvSt": None,
-            "SlpMod": None,
+            "Pow": None, "Mod": None, "SetTem": None, "WdSpd": None, "Air": None,
+            "Blo": None, "Health": None, "SwhSlp": None, "Lig": None, "SwingLfRig": None,
+            "SwUpDn": None, "Quiet": None, "Tur": None, "StHt": None, "TemUn": None,
+            "HeatCoolType": None, "TemRec": None, "SvSt": None, "SlpMod": None,
             # Add optional keys that might be fetched later
-            "TemSen": None,
-            "AntiDirectBlow": None,
-            "LigSen": None,
+            "TemSen": None, "AntiDirectBlow": None, "LigSen": None,
         }
-        # Define keys to fetch initially
         self._options_to_fetch = [
-            "Pow",
-            "Mod",
-            "SetTem",
-            "WdSpd",
-            "Air",
-            "Blo",
-            "Health",
-            "SwhSlp",
-            "Lig",
-            "SwingLfRig",
-            "SwUpDn",
-            "Quiet",
-            "Tur",
-            "StHt",
-            "TemUn",
-            "HeatCoolType",
-            "TemRec",
-            "SvSt",
-            "SlpMod",
+            "Pow", "Mod", "SetTem", "WdSpd", "Air", "Blo", "Health", "SwhSlp", "Lig",
+            "SwingLfRig", "SwUpDn", "Quiet", "Tur", "StHt", "TemUn", "HeatCoolType",
+            "TemRec", "SvSt", "SlpMod",
         ]
 
-        # Setup state change listeners
-        if temp_sensor_entity_id:
-            _LOGGER.info("Setting up temperature sensor: %s", temp_sensor_entity_id)
-            async_track_state_change_event(
-                hass, temp_sensor_entity_id, self._async_temp_sensor_changed
-            )
-
-        if lights_entity_id:
-            _LOGGER.info("Setting up lights entity: %s", lights_entity_id)
-            async_track_state_change_event(
-                hass, lights_entity_id, self._async_lights_entity_state_changed
-            )
-
-        if xfan_entity_id:
-            _LOGGER.info("Setting up xfan entity: %s", xfan_entity_id)
-            async_track_state_change_event(
-                hass, xfan_entity_id, self._async_xfan_entity_state_changed
-            )
-
-        if health_entity_id:
-            _LOGGER.info("Setting up health entity: %s", health_entity_id)
-            async_track_state_change_event(
-                hass, health_entity_id, self._async_health_entity_state_changed
-            )
-
-        if powersave_entity_id:
-            _LOGGER.info("Setting up powersave entity: %s", powersave_entity_id)
-            async_track_state_change_event(
-                hass, powersave_entity_id, self._async_powersave_entity_state_changed
-            )
-
-        if sleep_entity_id:
-            _LOGGER.info("Setting up sleep entity: %s", sleep_entity_id)
-            async_track_state_change_event(
-                hass, sleep_entity_id, self._async_sleep_entity_state_changed
-            )
-
-        if eightdegheat_entity_id:
-            _LOGGER.info("Setting up 8℃ heat entity: %s", eightdegheat_entity_id)
-            async_track_state_change_event(
-                hass,
-                eightdegheat_entity_id,
-                self._async_eightdegheat_entity_state_changed,
-            )
-
-        if air_entity_id:
-            _LOGGER.info("Setting up air entity: %s", air_entity_id)
-            async_track_state_change_event(
-                hass, air_entity_id, self._async_air_entity_state_changed
-            )
-
-        if target_temp_entity_id:
-            _LOGGER.info("Setting up target temp entity: %s", target_temp_entity_id)
-            async_track_state_change_event(
-                hass,
-                target_temp_entity_id,
-                self._async_target_temp_entity_state_changed,
-            )
-
-        if anti_direct_blow_entity_id:
-            _LOGGER.info(
-                "Setting up anti direct blow entity: %s", anti_direct_blow_entity_id
-            )
-            async_track_state_change_event(
-                hass,
-                anti_direct_blow_entity_id,
-                self._async_anti_direct_blow_entity_state_changed,
-            )
-
-        if light_sensor_entity_id:
-            _LOGGER.info("Setting up light sensor entity: %s", light_sensor_entity_id)
-            light_sensor_state: Optional[State] = self.hass.states.get(
-                light_sensor_entity_id
-            )
-            if light_sensor_state is not None and light_sensor_state.state == STATE_ON:
-                self._enable_light_sensor = True
-            else:
-                self._enable_light_sensor = False
-            async_track_state_change_event(
-                hass,
-                light_sensor_entity_id,
-                self._async_light_sensor_entity_state_changed,
-            )
-        else:
-            self._enable_light_sensor = False
-
-        if auto_light_entity_id:
-            _LOGGER.info("Setting up auto light entity: %s", auto_light_entity_id)
-            auto_light_state: Optional[State] = self.hass.states.get(
-                auto_light_entity_id
-            )
-            if auto_light_state is not None and auto_light_state.state == STATE_ON:
-                self._auto_light = True
-            else:
-                self._auto_light = False
-            async_track_state_change_event(
-                hass, auto_light_entity_id, self._async_auto_light_entity_state_changed
-            )
-        else:
-            self._auto_light = False
-
-        if auto_xfan_entity_id:
-            _LOGGER.info("Setting up auto xfan entity: %s", auto_xfan_entity_id)
-            auto_xfan_state: Optional[State] = self.hass.states.get(auto_xfan_entity_id)
-            if auto_xfan_state is not None and auto_xfan_state.state == STATE_ON:
-                self._auto_xfan = True
-            else:
-                self._auto_xfan = False
-            async_track_state_change_event(
-                hass, auto_xfan_entity_id, self._async_auto_xfan_entity_state_changed
-            )
-        else:
-            self._auto_xfan = False
+        # State change listener setup removed - handled by Options Flow if needed
 
     def set_ac_options(
         self,
@@ -571,327 +279,86 @@ class GreeClimate(ClimateEntity):
         if option_values_to_override is not None and isinstance(
             new_options_to_override, list
         ):
-            _LOGGER.debug("Setting ac_options with retrieved HVAC values")
+            # _LOGGER.debug("Setting ac_options with retrieved HVAC values") # Reduce noise
             if len(new_options_to_override) != len(option_values_to_override):
-                _LOGGER.error(
-                    "set_ac_options error: Mismatched lengths for keys (%d) and values (%d)",
-                    len(new_options_to_override),
-                    len(option_values_to_override),
-                )
-                # Potentially raise error or return unchanged options?
-                # For now, log and continue, but this indicates a problem.
+                _LOGGER.error("set_ac_options error: Mismatched lengths for keys (%d) and values (%d)", len(new_options_to_override), len(option_values_to_override))
             else:
                 for i, key in enumerate(new_options_to_override):
                     value = option_values_to_override[i]
-                    # Basic type check/conversion - assumes values are mostly int
-                    try:
-                        ac_options[key] = int(value) if value is not None else None
+                    try: ac_options[key] = int(value) if value is not None else None
                     except (ValueError, TypeError):
-                        _LOGGER.warning(
-                            "Could not convert value '%s' to int for key '%s'. Storing as None.",
-                            value,
-                            key,
-                        )
+                        _LOGGER.warning("Could not convert value '%s' to int for key '%s'. Storing as None.", value, key)
                         ac_options[key] = None
-                    _LOGGER.debug("Setting %s: %s", key, ac_options[key])
-            _LOGGER.debug("Done setting ac_options")
         elif isinstance(new_options_to_override, dict):
-            _LOGGER.debug("Overwriting ac_options with new settings")
+            # _LOGGER.debug("Overwriting ac_options with new settings") # Reduce noise
             for key, value in new_options_to_override.items():
-                # Basic type check/conversion
-                try:
-                    ac_options[key] = int(value) if value is not None else None
+                try: ac_options[key] = int(value) if value is not None else None
                 except (ValueError, TypeError):
-                    _LOGGER.warning(
-                        "Could not convert value '%s' to int for key '%s'. Storing as None.",
-                        value,
-                        key,
-                    )
+                    _LOGGER.warning("Could not convert value '%s' to int for key '%s'. Storing as None.", value, key)
                     ac_options[key] = None
-                _LOGGER.debug("Overwriting %s: %s", key, ac_options[key])
-            _LOGGER.debug("Done overwriting ac_options")
-        else:
-            _LOGGER.error("Invalid arguments passed to set_ac_options.")
-            # Return unchanged options if arguments are invalid
+                # _LOGGER.debug("Overwriting %s: %s", key, ac_options[key]) # Reduce noise
+        else: _LOGGER.error("Invalid arguments passed to set_ac_options.")
         return ac_options
 
     def update_ha_target_temperature(self) -> None:
         """Update HA target temperature based on internal state."""
-        # Sync set temperature to HA. If 8℃ heating is active, set HA temp to 8℃
-        # to match the AC display.
-        if self._ac_options.get("StHt") == 1:
-            self._target_temperature = 8.0  # Use float
-            _LOGGER.debug(
-                "HA target temp set according to HVAC state to 8.0℃ since 8℃ heating mode is active"
-            )
+        if self._ac_options.get("StHt") == 1: self._target_temperature = 8.0
         else:
             set_temp = self._ac_options.get("SetTem")
             self._target_temperature = float(set_temp) if set_temp is not None else None
 
-            if self._target_temp_entity_id and self._target_temperature is not None:
-                target_temp_state: Optional[State] = self.hass.states.get(
-                    self._target_temp_entity_id
-                )
-                if target_temp_state:
-                    attr: Dict[str, Any] = dict(
-                        target_temp_state.attributes
-                    )  # Get mutable copy
-                    if const.MIN_TEMP <= self._target_temperature <= const.MAX_TEMP:
-                        self.hass.states.async_set(
-                            self._target_temp_entity_id,
-                            str(
-                                self._target_temperature
-                            ),  # Convert state to string for async_set
-                            attr,
-                        )
-            _LOGGER.debug(
-                "HA target temp set according to HVAC state to: %s",
-                self._target_temperature,
-            )
-
     def update_ha_options(self) -> None:
-        """Update HA state for various options based on internal state."""
-        # Sync HA with retrieved HVAC options:
-        # WdSpd: Fan speed (0=auto)
-        # SvSt: Power save
-        # Air: Air mode (1=in, 2=out) - Needs verification
-        # Health: Health mode
-        # SwhSlp, SlpMod: Sleep mode (both needed?)
-        # StHt: 8℃ heating mode
-        # Lig: Lights
-        # Blo: XFan (Blow)
-
-        # Helper to update state
-        def _update_entity_state(
-            entity_id: Optional[str],
-            current_val: Optional[str],
-            new_state: Optional[str],
-        ) -> Optional[str]:
-            if new_state is None:
-                _LOGGER.debug(
-                    "New state for %s is None, skipping update.",
-                    entity_id or "unknown entity",
-                )
-                return current_val  # Return old value if new is None
-
-            _LOGGER.debug(
-                "Updating HA option %s to: %s", entity_id or "internal", new_state
-            )
-            if entity_id:
-                entity_state_obj: Optional[State] = self.hass.states.get(entity_id)
-                if entity_state_obj:
-                    attr: Dict[str, Any] = dict(entity_state_obj.attributes)
-                    if new_state in (STATE_ON, STATE_OFF):  # Only update if valid state
-                        # Check if state actually changed before setting
-                        if entity_state_obj.state != new_state:
-                            self.hass.states.async_set(entity_id, new_state, attr)
-                        else:
-                            _LOGGER.debug(
-                                "HA state for %s already %s, not setting.",
-                                entity_id,
-                                new_state,
-                            )
-                    else:
-                        _LOGGER.warning(
-                            "Attempted to set invalid state %s for %s",
-                            new_state,
-                            entity_id,
-                        )
-                else:
-                    _LOGGER.warning("Entity %s not found for state update.", entity_id)
-            return new_state  # Return the new state that was set (or attempted)
-
-        # Sync Lights
-        lig_val = self._ac_options.get("Lig")
-        new_lights_state = (
-            STATE_ON if lig_val == 1 else STATE_OFF if lig_val == 0 else STATE_UNKNOWN
-        )
-        self._current_lights = _update_entity_state(
-            self._lights_entity_id, self._current_lights, new_lights_state
-        )
-
-        # Sync XFan
-        blo_val = self._ac_options.get("Blo")
-        new_xfan_state = (
-            STATE_ON if blo_val == 1 else STATE_OFF if blo_val == 0 else STATE_UNKNOWN
-        )
-        self._current_xfan = _update_entity_state(
-            self._xfan_entity_id, self._current_xfan, new_xfan_state
-        )
-
-        # Sync Health
-        health_val = self._ac_options.get("Health")
-        new_health_state = (
-            STATE_ON
-            if health_val == 1
-            else STATE_OFF if health_val == 0 else STATE_UNKNOWN
-        )
-        self._current_health = _update_entity_state(
-            self._health_entity_id, self._current_health, new_health_state
-        )
-
-        # Sync PowerSave
-        svst_val = self._ac_options.get("SvSt")
-        new_powersave_state = (
-            STATE_ON if svst_val == 1 else STATE_OFF if svst_val == 0 else STATE_UNKNOWN
-        )
-        self._current_powersave = _update_entity_state(
-            self._powersave_entity_id, self._current_powersave, new_powersave_state
-        )
-
-        # Sync Sleep
-        swhslp_val = self._ac_options.get("SwhSlp")
-        slpmod_val = self._ac_options.get("SlpMod")
-        new_sleep_state = (
-            STATE_ON
-            if (swhslp_val == 1 and slpmod_val == 1)
-            else STATE_OFF if (swhslp_val == 0 and slpmod_val == 0) else STATE_UNKNOWN
-        )
-        self._current_sleep = _update_entity_state(
-            self._sleep_entity_id, self._current_sleep, new_sleep_state
-        )
-
-        # Sync 8 Degree Heat
-        stht_val = self._ac_options.get("StHt")
-        new_8deg_state = (
-            STATE_ON if stht_val == 1 else STATE_OFF if stht_val == 0 else STATE_UNKNOWN
-        )
-        self._current_eightdegheat = _update_entity_state(
-            self._eightdegheat_entity_id, self._current_eightdegheat, new_8deg_state
-        )
-
-        # Sync Air
-        air_val = self._ac_options.get("Air")
-        new_air_state = (
-            STATE_ON if air_val == 1 else STATE_OFF if air_val == 0 else STATE_UNKNOWN
-        )  # Assuming 1=ON, 0=OFF
-        self._current_air = _update_entity_state(
-            self._air_entity_id, self._current_air, new_air_state
-        )
-
-        # Sync Anti Direct Blow (only if feature exists)
+        """Update internal state vars for various options based on _ac_options."""
+        lig_val = self._ac_options.get("Lig"); self._current_lights = STATE_ON if lig_val == 1 else STATE_OFF if lig_val == 0 else STATE_UNKNOWN
+        blo_val = self._ac_options.get("Blo"); self._current_xfan = STATE_ON if blo_val == 1 else STATE_OFF if blo_val == 0 else STATE_UNKNOWN
+        health_val = self._ac_options.get("Health"); self._current_health = STATE_ON if health_val == 1 else STATE_OFF if health_val == 0 else STATE_UNKNOWN
+        svst_val = self._ac_options.get("SvSt"); self._current_powersave = STATE_ON if svst_val == 1 else STATE_OFF if svst_val == 0 else STATE_UNKNOWN
+        swhslp_val = self._ac_options.get("SwhSlp"); slpmod_val = self._ac_options.get("SlpMod"); self._current_sleep = STATE_ON if (swhslp_val == 1 and slpmod_val == 1) else STATE_OFF if (swhslp_val == 0 and slpmod_val == 0) else STATE_UNKNOWN
+        stht_val = self._ac_options.get("StHt"); self._current_eightdegheat = STATE_ON if stht_val == 1 else STATE_OFF if stht_val == 0 else STATE_UNKNOWN
+        air_val = self._ac_options.get("Air"); self._current_air = STATE_ON if air_val == 1 else STATE_OFF if air_val == 0 else STATE_UNKNOWN
         if self._has_anti_direct_blow:
-            adb_val = self._ac_options.get("AntiDirectBlow")
-            new_adb_state = (
-                STATE_ON
-                if adb_val == 1
-                else STATE_OFF if adb_val == 0 else STATE_UNKNOWN
-            )
-            self._current_anti_direct_blow = _update_entity_state(
-                self._anti_direct_blow_entity_id,
-                self._current_anti_direct_blow,
-                new_adb_state,
-            )
+            adb_val = self._ac_options.get("AntiDirectBlow"); self._current_anti_direct_blow = STATE_ON if adb_val == 1 else STATE_OFF if adb_val == 0 else STATE_UNKNOWN
 
     def update_ha_hvac_mode(self) -> None:
         """Update HA HVAC mode based on internal state."""
         pow_state = self._ac_options.get("Pow")
-        if pow_state == 0:
-            self._hvac_mode = HVACMode.OFF
+        if pow_state == 0: self._hvac_mode = HVACMode.OFF
         else:
             mod_index = self._ac_options.get("Mod")
-            if mod_index is not None and 0 <= mod_index < len(self._attr_hvac_modes):
-                self._hvac_mode = self._attr_hvac_modes[mod_index]
-            else:
-                _LOGGER.warning("Invalid HVAC mode index received: %s", mod_index)
-                self._hvac_mode = HVACMode.OFF  # Default to OFF if invalid
-        _LOGGER.debug(
-            "HA operation mode set according to HVAC state to: %s",
-            self._hvac_mode,
-        )
+            if mod_index is not None and 0 <= mod_index < len(self._attr_hvac_modes): self._hvac_mode = self._attr_hvac_modes[mod_index]
+            else: _LOGGER.warning("Invalid HVAC mode index: %s", mod_index); self._hvac_mode = HVACMode.OFF
 
     def update_ha_current_swing_mode(self) -> None:
         """Update HA vertical swing mode based on internal state."""
         swing_index = self._ac_options.get("SwUpDn")
-        if swing_index is not None and 0 <= swing_index < len(self._attr_swing_modes):
-            self._swing_mode = self._attr_swing_modes[swing_index]
-        else:
-            _LOGGER.warning(
-                "Invalid vertical swing mode index received: %s", swing_index
-            )
-            self._swing_mode = None  # Set to None if invalid
-        _LOGGER.debug(
-            "HA swing mode set according to HVAC state to: %s",
-            self._swing_mode,
-        )
+        if swing_index is not None and 0 <= swing_index < len(self._attr_swing_modes): self._swing_mode = self._attr_swing_modes[swing_index]
+        else: _LOGGER.warning("Invalid vertical swing index: %s", swing_index); self._swing_mode = None
 
     def update_ha_current_preset_mode(self) -> None:
         """Update HA horizontal swing (preset) mode based on internal state."""
-        if not self._horizontal_swing:
-            self._preset_mode = None
-            return
-
+        if not self._horizontal_swing: self._preset_mode = None; return
         preset_index = self._ac_options.get("SwingLfRig")
-        if (
-            self._attr_preset_modes
-            and preset_index is not None
-            and 0 <= preset_index < len(self._attr_preset_modes)
-        ):
-            self._preset_mode = self._attr_preset_modes[preset_index]
-        else:
-            _LOGGER.warning(
-                "Invalid horizontal swing (preset) mode index received: %s",
-                preset_index,
-            )
-            self._preset_mode = None  # Set to None if invalid
-        _LOGGER.debug(
-            "HA preset mode set according to HVAC state to: %s",
-            self._preset_mode,
-        )
+        if self._attr_preset_modes and preset_index is not None and 0 <= preset_index < len(self._attr_preset_modes): self._preset_mode = self._attr_preset_modes[preset_index]
+        else: _LOGGER.warning("Invalid horizontal swing index: %s", preset_index); self._preset_mode = None
 
     def update_ha_fan_mode(self) -> None:
         """Update HA fan mode based on internal state."""
-        if self._ac_options.get("Tur") == 1:
-            self._fan_mode = "Turbo"
-        elif (
-            self._ac_options.get("Quiet") == 1
-        ):  # Check for 1 specifically? Docs say >=1
-            self._fan_mode = "Quiet"
+        if self._ac_options.get("Tur") == 1: self._fan_mode = "Turbo"
+        elif self._ac_options.get("Quiet") == 1: self._fan_mode = "Quiet"
         else:
             speed_index = self._ac_options.get("WdSpd")
-            if speed_index is not None and 0 <= speed_index < len(self._attr_fan_modes):
-                self._fan_mode = self._attr_fan_modes[speed_index]
-            else:
-                _LOGGER.warning("Invalid fan speed index received: %s", speed_index)
-                self._fan_mode = None  # Set to None if invalid
-        _LOGGER.debug(
-            "HA fan mode set according to HVAC state to: %s",
-            self._fan_mode,
-        )
+            if speed_index is not None and 0 <= speed_index < len(self._attr_fan_modes): self._fan_mode = self._attr_fan_modes[speed_index]
+            else: _LOGGER.warning("Invalid fan speed index: %s", speed_index); self._fan_mode = None
 
     def update_ha_current_temperature(self) -> None:
-        """Update HA current temperature based on internal state or sensor."""
-        if not self._temp_sensor_entity_id:
-            if self._has_temp_sensor:
-                temp_sen = self._ac_options.get("TemSen")
-                if temp_sen is not None:
-                    # Apply offset logic (const.TEMP_OFFSET = 40)
-                    # NOTE: Offset logic might be device-specific and needs verification.
-                    # NOTE: Assumes internal sensor reports Celsius; add conversion if TemUn indicates Fahrenheit.
-                    temp_val_before_offset = (
-                        temp_sen
-                        if temp_sen <= const.TEMP_OFFSET
-                        else temp_sen - const.TEMP_OFFSET
-                    )
-                    temp = float(temp_val_before_offset)
-                    # Use the HA unit system - assumes Celsius from device
-                    # No conversion needed if device is Celsius and HA is Celsius
-                    self._current_temperature = temp
-                    _LOGGER.debug(
-                        "HA current temperature set with device built-in sensor: %s %s",
-                        self._current_temperature,
-                        self._attr_temperature_unit,
-                    )
-                else:
-                    _LOGGER.debug("Device temperature sensor value (TemSen) is None.")
-                    self._current_temperature = None
-            else:
-                # No external sensor and no internal sensor detected/available
-                self._current_temperature = None
-                _LOGGER.debug(
-                    "No internal or external temperature sensor configured/detected."
-                )
-        # If external sensor is configured, _async_update_current_temp handles updates
+        """Update HA current temperature based on internal state."""
+        if self._has_temp_sensor:
+            temp_sen = self._ac_options.get("TemSen")
+            if temp_sen is not None:
+                temp_val = temp_sen if temp_sen <= TEMP_OFFSET else temp_sen - TEMP_OFFSET
+                self._current_temperature = float(temp_val)
+            else: self._current_temperature = None
+        else: self._current_temperature = None
 
     def update_ha_state_to_current_ac_state(self) -> None:
         """Update all HA state properties based on the current _ac_options."""
@@ -899,809 +366,162 @@ class GreeClimate(ClimateEntity):
         self.update_ha_options()
         self.update_ha_hvac_mode()
         self.update_ha_current_swing_mode()
-        # Only update preset if supported
-        if self._horizontal_swing:
-            self.update_ha_current_preset_mode()
+        if self._horizontal_swing: self.update_ha_current_preset_mode()
         self.update_ha_fan_mode()
         self.update_ha_current_temperature()
 
-    def sync_state(
-        self, ac_options: Optional[Dict[str, Any]] = None
-    ) -> None:  # Return None, side effects only
+    def sync_state(self, ac_options: Optional[Dict[str, Any]] = None) -> None:
         """Fetch state, update internal state, optionally send commands, update HA state."""
-        _LOGGER.debug("Starting sync_state")
-        if ac_options is None:
-            ac_options = {}  # Ensure ac_options is a dict
+        if ac_options is None: ac_options = {}
 
-        # --- Feature Detection (Run only once or if status is None) ---
-        if self._has_temp_sensor is None and not self._temp_sensor_entity_id:
-            _LOGGER.debug("Attempting to check for built-in temperature sensor")
-            try:
-                # Use direct API call. get_status returns the list/dict directly.
-                # Assuming single item returns a list like [value] or None on error.
-                temp_sensor_check_result = self._api.get_status(["TemSen"])
-                # Check if result is not None and potentially if it's a list with a value
-                if (
-                    temp_sensor_check_result is not None
-                ):  # Simplified check, assumes success means feature exists
-                    self._has_temp_sensor = True
-                    # Add TemSen to fetch list if not already present
-                    if "TemSen" not in self._options_to_fetch:
-                        self._options_to_fetch.append("TemSen")
-                    _LOGGER.info("Device has a built-in temperature sensor.")
-                else:
-                    self._has_temp_sensor = False
-                    _LOGGER.info(
-                        "Device has no built-in temperature sensor or check failed."
-                    )
-            except Exception as e:
-                _LOGGER.warning(
-                    "Could not determine built-in temperature sensor status. Error: %s",
-                    e,
-                )
-                # Assume false for now, might retry later?
-                self._has_temp_sensor = False
-
-        if self._has_anti_direct_blow is None and self._anti_direct_blow_entity_id:
-            _LOGGER.debug("Attempting to check for anti-direct blow feature")
-            try:
-                # Use direct API call.
-                adb_check_result = self._api.get_status(["AntiDirectBlow"])
-                if adb_check_result is not None:  # Simplified check
-                    self._has_anti_direct_blow = True
-                    if "AntiDirectBlow" not in self._options_to_fetch:
-                        self._options_to_fetch.append("AntiDirectBlow")
-                    _LOGGER.info("Device has anti-direct blow feature.")
-                else:
-                    self._has_anti_direct_blow = False
-                    _LOGGER.info(
-                        "Device has no anti-direct blow feature or check failed."
-                    )
-            except Exception as e:
-                _LOGGER.warning(
-                    "Could not determine anti-direct blow status. Error: %s", e
-                )
-                self._has_anti_direct_blow = False
-
-        if self._has_light_sensor is None and self._light_sensor_entity_id:
-            _LOGGER.debug("Attempting to check for built-in light sensor")
-            try:
-                # Use direct API call.
-                light_sensor_check_result = self._api.get_status(["LigSen"])
-                if light_sensor_check_result is not None:  # Simplified check
-                    self._has_light_sensor = True
-                    if "LigSen" not in self._options_to_fetch:
-                        self._options_to_fetch.append("LigSen")
-                    _LOGGER.info("Device has a built-in light sensor.")
-                else:
-                    self._has_light_sensor = False
-                    _LOGGER.info("Device has no built-in light sensor or check failed.")
-            except Exception as e:
-                _LOGGER.warning(
-                    "Could not determine built-in light sensor status. Error: %s", e
-                )
-                self._has_light_sensor = False
+        # --- Feature Detection --- (Simplified)
+        if self._has_temp_sensor is None:
+            try: self._has_temp_sensor = self._api.get_status(["TemSen"]) is not None; _LOGGER.info("Temp sensor detected: %s", self._has_temp_sensor)
+            except Exception: self._has_temp_sensor = False
+            if self._has_temp_sensor and "TemSen" not in self._options_to_fetch: self._options_to_fetch.append("TemSen")
+        if self._has_anti_direct_blow is None:
+             try: self._has_anti_direct_blow = self._api.get_status(["AntiDirectBlow"]) is not None; _LOGGER.info("Anti-direct blow detected: %s", self._has_anti_direct_blow)
+             except Exception: self._has_anti_direct_blow = False
+             if self._has_anti_direct_blow and "AntiDirectBlow" not in self._options_to_fetch: self._options_to_fetch.append("AntiDirectBlow")
+        if self._has_light_sensor is None:
+            try: self._has_light_sensor = self._api.get_status(["LigSen"]) is not None; _LOGGER.info("Light sensor detected: %s", self._has_light_sensor)
+            except Exception: self._has_light_sensor = False
+            if self._has_light_sensor and "LigSen" not in self._options_to_fetch: self._options_to_fetch.append("LigSen")
 
         # --- Fetch Current State ---
-        # Removed unused variable: currentValues_list
+        # Store expected length *before* calling get_status
+        expected_len = len(self._options_to_fetch)
         try:
-            # Fetch data from the device using the direct API call.
-            # get_status should return the list of values directly or None on error.
             received_data_list = self._api.get_status(self._options_to_fetch)
-
-            # Validate the received data
-            if received_data_list is None:
-                _LOGGER.warning("Failed to get status from device (API returned None).")
-                # Raise an exception to trigger the offline handling logic below
-                raise ConnectionError("API get_status returned None")
-
-            if not isinstance(received_data_list, list):
-                _LOGGER.error(
-                    "API get_status did not return a list as expected. Got: %s",
-                    type(received_data_list),
-                )
-                raise ConnectionError("API returned unexpected data type.")
-
-            if len(received_data_list) != len(self._options_to_fetch):
-                _LOGGER.error(
-                    "API list length mismatch. Expected %d, got %d: %s",
-                    len(self._options_to_fetch),
-                    len(received_data_list),  # Corrected variable name here
-                    received_data_list,  # Corrected variable name here
-                )
-                raise ConnectionError("API returned list with unexpected length.")
-
-            # Validation passed, received_data_list contains the status list
-            _LOGGER.debug(
-                "Successfully received status list from API: %s", received_data_list
-            )
-
-        except Exception as e:  # Catch connection errors or validation errors above
-            _LOGGER.warning(
-                "Could not connect with or process data from device during sync_state. Error: %s",
-                e,
-            )
+            if received_data_list is None: raise ConnectionError("API get_status returned None")
+            if not isinstance(received_data_list, list): raise ConnectionError(f"API returned unexpected type: {type(received_data_list)}")
+            # Compare received length against the length *before* feature detection might have added keys
+            if len(received_data_list) != expected_len: raise ConnectionError(f"API list length mismatch: {len(received_data_list)} vs {expected_len}")
+        except Exception as e:
             if not self._disable_available_check:
                 self._online_attempts += 1
-                if self._online_attempts >= self._max_online_attempts:  # Use >=
-                    _LOGGER.info(
-                        "Could not connect with device %s times. Setting offline.",
-                        self._max_online_attempts,
-                    )
+                if self._online_attempts >= self._max_online_attempts and self._device_online is not False:
+                    _LOGGER.info("Device %s offline after %s attempts. Error: %s", self.name, self._max_online_attempts, e)
                     self._device_online = False
-            # Exit sync_state if connection/processing failed
             return
-        # No else needed after return
 
-        # Connection and data retrieval successful, reset attempts and mark online
+        # --- Connection Success ---
         if not self._disable_available_check:
-            if not self._device_online:
-                _LOGGER.info("Device back online.")
-            self._device_online = True
-            self._online_attempts = 0
+            if self._device_online is not True: _LOGGER.info("Device %s back online.", self.name)
+            self._device_online = True; self._online_attempts = 0
 
         # --- Update Internal State ---
-        # Set latest status from device using the validated list
-        # set_ac_options can handle list of keys and list of values
-        self._ac_options = self.set_ac_options(
-            self._ac_options, self._options_to_fetch, received_data_list
-        )
-        _LOGGER.debug("Updated _ac_options with received data.")
-
-        # Overwrite status with our choices if commands were passed (ac_options is a dict)
-        if ac_options:  # Check if command dict is not empty
-            self._ac_options = self.set_ac_options(self._ac_options, ac_options)
+        # Use expected_len to slice received_data_list if feature detection added keys
+        # This ensures set_ac_options receives lists of matching lengths
+        self._ac_options = self.set_ac_options(self._ac_options, self._options_to_fetch[:expected_len], received_data_list[:expected_len])
+        if ac_options: self._ac_options = self.set_ac_options(self._ac_options, ac_options)
 
         # --- Send Commands (if needed) ---
-        # If not the first (boot) run AND commands were passed (ac_options is not empty), update state towards the HVAC
         if not self._first_time_run and ac_options:
-            # Replicate logic from removed send_state_to_ac
-            opt_keys: List[str] = list(
-                ac_options.keys()
-            )  # Send only the keys provided in ac_options
-            p_values: List[Any] = list(ac_options.values())
-
-            _LOGGER.debug(
-                "Calling API send_command directly with opt_keys: %s, p_values: %s",
-                opt_keys,
-                p_values,
-            )
+            opt_keys, p_values = list(ac_options.keys()), list(ac_options.values())
+            _LOGGER.debug("Sending command: %s = %s", opt_keys, p_values)
             try:
-                # Call the API method directly
-                response = self._api.send_command(opt_keys, p_values)
-                if response:
-                    _LOGGER.debug(
-                        "Successfully sent command via API. Response: %s", response
-                    )
-                    # Optionally update internal state based on response if needed
-                    # For now, just log success. The next update cycle will fetch the actual state.
-                else:
-                    _LOGGER.error("API send_command failed or returned no response.")
-            except Exception as e:
-                _LOGGER.error(
-                    "Error calling self._api.send_command: %s", e, exc_info=True
-                )
-
-        elif self._first_time_run:
-            # loop used once for Gree Climate initialisation only
-            self._first_time_run = False
+                if not self._api.send_command(opt_keys, p_values): _LOGGER.error("API send_command failed.")
+            except Exception as e: _LOGGER.error("Error sending command: %s", e, exc_info=True)
+        elif self._first_time_run: self._first_time_run = False
 
         # --- Update HA State ---
         self.update_ha_state_to_current_ac_state()
 
-        _LOGGER.debug("Finished sync_state")
-        # No return value needed
-
-    # --- State Change Callbacks ---
-
-    async def _async_temp_sensor_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle temperature sensor state changes."""
-        entity_id: str = event.data["entity_id"]
-        old_state: Optional[State] = event.data.get("old_state")  # Use .get for safety
-        new_state: Optional[State] = event.data.get("new_state")
-        old_state_str: str = str(old_state.state) if old_state else "None"
-        new_state_str: str = str(new_state.state) if new_state else "None"
-
-        _LOGGER.debug(
-            "temp_sensor state changed | %s from %s to %s",
-            entity_id,
-            old_state_str,
-            new_state_str,
-        )
-        if new_state is None or new_state.state in (STATE_UNKNOWN, None):
-            _LOGGER.debug("New temp_sensor state is unknown or None, ignoring.")
-            return
-        self._async_update_current_temp(new_state)
-        # schedule_update_ha_state(True) forces immediate update, consider False
-        self.async_schedule_update_ha_state(False)
-
-    @callback
-    def _async_update_current_temp(self, state: State) -> None:
-        """Update current temperature from sensor state."""
-        _LOGGER.debug(
-            "Thermostat updated with changed temp_sensor state | %s", state.state
-        )
-        unit: Optional[str] = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
-        try:
-            _state_val: str = state.state
-            # _LOGGER.debug("Current state temp_sensor: %s", _state_val) # Keep this? Maybe not needed now.
-            if self.represents_float(_state_val):
-                temp_value = float(_state_val)
-
-                # Convert Fahrenheit to Celsius if necessary
-                if unit == UnitOfTemperature.FAHRENHEIT:
-                    celsius_temp = (temp_value - 32.0) * 5.0 / 9.0
-                    self._current_temperature = round(
-                        celsius_temp, 1
-                    )  # Store as Celsius, rounded
-                    _LOGGER.debug(
-                        "External sensor (%s °F) converted to %s °C",
-                        temp_value,
-                        self._current_temperature,
-                    )
-                else:
-                    # Assume Celsius or handle other units if needed
-                    self._current_temperature = temp_value  # Store directly
-                    _LOGGER.debug(
-                        "External sensor (%s %s) stored directly",
-                        temp_value,
-                        unit or "°C assumed",
-                    )
-
-                # Log the final stored value (which should always be Celsius)
-                # _LOGGER.debug("Current temp set to: %s", self._current_temperature) # Redundant with above logs
-
-            else:
-                _LOGGER.warning(
-                    "Temp sensor state '%s' is not a valid float.", _state_val
-                )
-                # Setting to None if invalid seems safer.
-                # Setting to None if invalid seems safer.
-                self._current_temperature = None
-        except (ValueError, TypeError) as ex:
-            _LOGGER.error("Unable to update from temp_sensor: %s", ex)
-            self._current_temperature = None  # Set to None on error
-
-    def represents_float(self, s: Any) -> bool:
-        """Check if a string represents a float."""
-        if not isinstance(s, str):
-            return False  # Only check strings
-        try:
-            float(s)
-            return True
-        except ValueError:
-            return False
-
-    async def _async_lights_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle lights entity state changes."""
-        entity_id: str = event.data["entity_id"]
-        old_state: Optional[State] = event.data.get("old_state")
-        new_state: Optional[State] = event.data.get("new_state")
-        old_state_str: str = str(old_state.state) if old_state else "None"
-        new_state_str: str = str(new_state.state) if new_state else "None"
-
-        _LOGGER.debug(
-            "lights_entity state changed: %s from %s to %s",
-            entity_id,
-            old_state_str,
-            new_state_str,
-        )
-        if new_state is None or new_state.state is None:
-            return
-        # Avoid initial 'off' state triggering command if HA just started
-        if new_state.state == STATE_OFF and old_state is None:
-            _LOGGER.debug(
-                "lights_entity initial state is off, ignoring to avoid potential startup beep."
-            )
-            return
-        # Check if state actually changed compared to internal tracking
-        if new_state.state == self._current_lights:
-            _LOGGER.debug(
-                "lights_entity state change matches internal state, ignoring."
-            )
-            return
-
-        self._async_update_current_lights(new_state)
-        # No need to schedule update here, sync_state handles HA state updates
-
-    @callback
-    def _async_update_current_lights(self, state: State) -> None:
-        """Update HVAC lights based on entity state."""
-        _LOGGER.debug(
-            "Updating HVAC with changed lights_entity state | %s", state.state
-        )
-        if state.state == STATE_ON:
-            self.sync_state({"Lig": 1})
-        elif state.state == STATE_OFF:
-            self.sync_state({"Lig": 0})
-        else:
-            _LOGGER.error(
-                "Unable to update from lights_entity: Invalid state %s", state.state
-            )
-
-    async def _async_xfan_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle xfan entity state changes."""
-        entity_id: str = event.data["entity_id"]
-        old_state: Optional[State] = event.data.get("old_state")
-        new_state: Optional[State] = event.data.get("new_state")
-        old_state_str: str = str(old_state.state) if old_state else "None"
-        new_state_str: str = str(new_state.state) if new_state else "None"
-
-        _LOGGER.debug(
-            "xfan_entity state changed: %s from %s to %s",
-            entity_id,
-            old_state_str,
-            new_state_str,
-        )
-        if new_state is None or new_state.state is None:
-            return
-        if new_state.state == STATE_OFF and old_state is None:
-            _LOGGER.debug("xfan_entity initial state is off, ignoring.")
-            return
-        if new_state.state == self._current_xfan:
-            _LOGGER.debug("xfan_entity state change matches internal state, ignoring.")
-            return
-        # Check if HVAC mode allows XFan
-        if self._hvac_mode not in (HVACMode.COOL, HVACMode.DRY):
-            _LOGGER.info("Cannot set xfan in %s mode", self._hvac_mode)
-            # Optionally revert the HA helper switch state?
-            # For now, just don't send command.
-            return
-
-        self._async_update_current_xfan(new_state)
-
-    @callback
-    def _async_update_current_xfan(self, state: State) -> None:
-        """Update HVAC xfan based on entity state."""
-        _LOGGER.debug("Updating HVAC with changed xfan_entity state | %s", state.state)
-        if state.state == STATE_ON:
-            self.sync_state({"Blo": 1})
-        elif state.state == STATE_OFF:
-            self.sync_state({"Blo": 0})
-        else:
-            _LOGGER.error(
-                "Unable to update from xfan_entity: Invalid state %s", state.state
-            )
-
-    # ... Repeat similar pattern for other optional entity callbacks:
-    # _async_health_entity_state_changed, _async_update_current_health,
-    # _async_powersave_entity_state_changed, _async_update_current_powersave (check mode),
-    # _async_sleep_entity_state_changed, _async_update_current_sleep (check mode),
-    # _async_eightdegheat_entity_state_changed,
-    #   _async_update_current_eightdegheat (check mode),
-    # _async_air_entity_state_changed, _async_update_current_air,
-    # _async_anti_direct_blow_entity_state_changed,
-    #   _async_update_current_anti_direct_blow,
-    # _async_light_sensor_entity_state_changed,
-    #   _async_update_light_sensor (updates internal flag),
-    # _async_auto_light_entity_state_changed, _async_update_auto_light (updates internal flag + sends command)
-    # _async_auto_xfan_entity_state_changed, _async_update_auto_xfan (updates internal flag + sends command)
-    # _async_target_temp_entity_state_changed, _async_update_current_target_temp
-
-    # --- Simplified Callbacks (Example for Health) ---
-    async def _async_health_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle health entity state changes."""
-        new_state: Optional[State] = event.data.get("new_state")
-        if (
-            new_state is None
-            or new_state.state is None
-            or new_state.state == self._current_health
-        ):
-            return
-        # Avoid initial 'off' state triggering command
-        if new_state.state == STATE_OFF and event.data.get("old_state") is None:
-            return
-        self._async_update_current_health(new_state)
-
-    @callback
-    def _async_update_current_health(self, state: State) -> None:
-        """Update HVAC health based on entity state."""
-        _LOGGER.debug("Updating HVAC health state to: %s", state.state)
-        if state.state == STATE_ON:
-            self.sync_state({"Health": 1})
-        elif state.state == STATE_OFF:
-            self.sync_state({"Health": 0})
-
     # --- Properties ---
-
-    # Name and Unique ID are handled by _attr_name, _attr_unique_id
-
-    # Should poll is handled by _attr_should_poll
-
-    # Temperature unit is handled by _attr_temperature_unit
-
     @property
-    def current_temperature(self) -> Optional[float]:
-        """Return the current temperature."""
-        # Value updated by update_ha_current_temperature or _async_update_current_temp
-        # _LOGGER.debug("current_temperature(): %s", self._current_temperature) # Removed diagnostic log
-        return self._current_temperature
-
-    # Min/Max temp handled by _attr_min_temp, _attr_max_temp
-
+    def current_temperature(self) -> Optional[float]: return self._current_temperature
     @property
-    def target_temperature(self) -> Optional[float]:
-        """Return the temperature we try to reach."""
-        # Value updated by update_ha_target_temperature
-        _LOGGER.debug("target_temperature(): %s", self._target_temperature)
-        return self._target_temperature
-
-    # Target temp step handled by _attr_target_temperature_step
-
+    def target_temperature(self) -> Optional[float]: return self._target_temperature
     @property
-    def hvac_mode(self) -> HVACMode:
-        """Return current operation mode ie. heat, cool, idle."""
-        # Value updated by update_ha_hvac_mode
-        _LOGGER.debug("hvac_mode(): %s", self._hvac_mode)
-        return self._hvac_mode
-
-    # HVAC modes list handled by _attr_hvac_modes
-
+    def hvac_mode(self) -> HVACMode: return self._hvac_mode
     @property
-    def fan_mode(self) -> Optional[str]:
-        """Return the fan mode."""
-        # Value updated by update_ha_fan_mode
-        _LOGGER.debug("fan_mode(): %s", self._fan_mode)
-        return self._fan_mode
-
-    # Fan modes list handled by _attr_fan_modes
-
+    def fan_mode(self) -> Optional[str]: return self._fan_mode
     @property
-    def swing_mode(self) -> Optional[str]:
-        """Return the swing mode."""
-        # Value updated by update_ha_current_swing_mode
-        _LOGGER.debug("swing_mode(): %s", self._swing_mode)
-        return self._swing_mode
-
-    # Swing modes list handled by _attr_swing_modes
-
+    def swing_mode(self) -> Optional[str]: return self._swing_mode
     @property
-    def preset_mode(self) -> Optional[str]:
-        """Return the preset mode (horizontal swing)."""
-        # Value updated by update_ha_current_preset_mode
-        # Returns None if horizontal swing not supported/enabled
-        _LOGGER.debug("preset_mode(): %s", self._preset_mode)
-        return self._preset_mode if self._horizontal_swing else None
-
-    # Preset modes list handled by _attr_preset_modes (conditionally set in __init__)
-
-    # Supported features handled by _attr_supported_features (conditionally updated in __init__)
-
+    def preset_mode(self) -> Optional[str]: return self._preset_mode if self._horizontal_swing else None
     @property
-    def available(self) -> bool:
-        """Return True if the device is available."""
-        if self._disable_available_check:
-            return True
-        # No else needed after return
-        is_avail = bool(self._device_online)
-        _LOGGER.debug("available(): %s", is_avail)
-        return is_avail
+    def available(self) -> bool: return True if self._disable_available_check else bool(self._device_online)
 
     # --- Service Methods ---
-
     def set_temperature(self, **kwargs: Any) -> None:
-        """Set new target temperatures."""
         temperature: Optional[float] = kwargs.get(ATTR_TEMPERATURE)
-        _LOGGER.debug("set_temperature(): %s", temperature)
+        _LOGGER.debug("Service call: set_temperature(%s)", temperature)
         if temperature is not None:
-            # Check if device is powered on
             if self._ac_options.get("Pow") != 0:
-                temp_int = int(temperature)  # Gree uses integer temps
-                if const.MIN_TEMP <= temp_int <= const.MAX_TEMP:
-                    _LOGGER.debug("sync_state with SetTem=%d", temp_int)
-                    self.sync_state({"SetTem": temp_int})
-                    # No need to schedule update, sync_state handles it
-                else:
-                    _LOGGER.warning(
-                        "Requested temperature %s is out of range (%d-%d)",
-                        temperature,
-                        const.MIN_TEMP,
-                        const.MAX_TEMP,
-                    )
-            else:
-                _LOGGER.warning("Cannot set temperature when device is off.")
-        else:
-            _LOGGER.warning("set_temperature called without temperature value.")
+                temp_int = int(temperature)
+                if MIN_TEMP <= temp_int <= MAX_TEMP: self.sync_state({"SetTem": temp_int})
+                else: _LOGGER.warning("Temp %s out of range (%d-%d)", temperature, MIN_TEMP, MAX_TEMP)
+            else: _LOGGER.warning("Cannot set temperature when device is off.")
+        else: _LOGGER.warning("set_temperature called without temperature value.")
 
     def set_swing_mode(self, swing_mode: str) -> None:
-        """Set new target swing operation."""
-        _LOGGER.debug("set_swing_mode(): %s", swing_mode)
+        _LOGGER.debug("Service call: set_swing_mode(%s)", swing_mode)
         if self._ac_options.get("Pow") != 0:
-            if swing_mode in self._attr_swing_modes:
-                swing_index = self._attr_swing_modes.index(swing_mode)
-                _LOGGER.debug("sync_state with SwUpDn=%d", swing_index)
-                self.sync_state({"SwUpDn": swing_index})
-            else:
-                _LOGGER.error("Invalid swing mode requested: %s", swing_mode)
-        else:
-            _LOGGER.warning("Cannot set swing mode when device is off.")
+            if swing_mode in self._attr_swing_modes: self.sync_state({"SwUpDn": self._attr_swing_modes.index(swing_mode)})
+            else: _LOGGER.error("Invalid swing mode requested: %s", swing_mode)
+        else: _LOGGER.warning("Cannot set swing mode when device is off.")
 
     def set_preset_mode(self, preset_mode: str) -> None:
-        """Set new preset mode (horizontal swing)."""
-        _LOGGER.debug("set_preset_mode(): %s", preset_mode)
-        if not self._horizontal_swing:
-            _LOGGER.warning(
-                "Horizontal swing (preset mode) is not supported or enabled."
-            )
-            return
+        _LOGGER.debug("Service call: set_preset_mode(%s)", preset_mode)
+        if not self._horizontal_swing: _LOGGER.warning("Horizontal swing not supported."); return
         if self._ac_options.get("Pow") != 0:
-            if self._attr_preset_modes and preset_mode in self._attr_preset_modes:
-                preset_index = self._attr_preset_modes.index(preset_mode)
-                _LOGGER.debug("sync_state with SwingLfRig=%d", preset_index)
-                self.sync_state({"SwingLfRig": preset_index})
-            else:
-                _LOGGER.error("Invalid preset mode requested: %s", preset_mode)
-        else:
-            _LOGGER.warning("Cannot set preset mode when device is off.")
+            if self._attr_preset_modes and preset_mode in self._attr_preset_modes: self.sync_state({"SwingLfRig": self._attr_preset_modes.index(preset_mode)})
+            else: _LOGGER.error("Invalid preset mode requested: %s", preset_mode)
+        else: _LOGGER.warning("Cannot set preset mode when device is off.")
 
     def set_fan_mode(self, fan_mode: str) -> None:
-        """Set new target fan mode."""
-        _LOGGER.debug("set_fan_mode(): %s", fan_mode)
+        _LOGGER.debug("Service call: set_fan_mode(%s)", fan_mode)
         if self._ac_options.get("Pow") != 0:
-            command: Dict[str, int] = {
-                "Tur": 0,
-                "Quiet": 0,
-            }  # Default to normal fan speed
+            command: Dict[str, int] = {"Tur": 0, "Quiet": 0}
             fan_mode_lower = fan_mode.lower()
-
-            if fan_mode_lower == "turbo":
-                _LOGGER.debug("Enabling turbo mode")
-                command["Tur"] = 1
-            elif fan_mode_lower == "quiet":
-                _LOGGER.debug("Enabling quiet mode")
-                command["Quiet"] = 1
-            elif fan_mode in self._attr_fan_modes:
-                fan_index = self._attr_fan_modes.index(fan_mode)
-                _LOGGER.debug("Setting normal fan mode index to %d", fan_index)
-                command["WdSpd"] = fan_index
-            else:
-                _LOGGER.error("Invalid fan mode requested: %s", fan_mode)
-                return  # Don't send command if invalid
-
+            if fan_mode_lower == "turbo": command["Tur"] = 1
+            elif fan_mode_lower == "quiet": command["Quiet"] = 1
+            elif fan_mode in self._attr_fan_modes: command["WdSpd"] = self._attr_fan_modes.index(fan_mode)
+            else: _LOGGER.error("Invalid fan mode requested: %s", fan_mode); return
             self.sync_state(command)
-        else:
-            _LOGGER.warning("Cannot set fan mode when device is off.")
+        else: _LOGGER.warning("Cannot set fan mode when device is off.")
 
     def set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Set new operation mode."""
-        _LOGGER.debug("set_hvac_mode(): %s", hvac_mode)
+        _LOGGER.debug("Service call: set_hvac_mode(%s)", hvac_mode)
         command: Dict[str, int] = {}
-        if hvac_mode == HVACMode.OFF:
-            command["Pow"] = 0
-            # Auto light logic when turning off
-            if self._auto_light:
-                command["Lig"] = 0
-                if self._has_light_sensor and self._enable_light_sensor:
-                    command["LigSen"] = 1  # Check actual key name
+        if hvac_mode == HVACMode.OFF: command["Pow"] = 0
         else:
             if hvac_mode in self._attr_hvac_modes:
-                command["Pow"] = 1
-                command["Mod"] = self._attr_hvac_modes.index(hvac_mode)
-                # Auto light logic when turning on
-                if self._auto_light:
-                    command["Lig"] = 1
-                    if self._has_light_sensor and self._enable_light_sensor:
-                        command["LigSen"] = 0  # Check actual key name
-                # Auto xfan logic
-                if self._auto_xfan and hvac_mode in (HVACMode.COOL, HVACMode.DRY):
-                    command["Blo"] = 1
-            else:
-                _LOGGER.error("Invalid HVAC mode requested: %s", hvac_mode)
-                return  # Don't send command if invalid
-
+                command["Pow"] = 1; command["Mod"] = self._attr_hvac_modes.index(hvac_mode)
+            else: _LOGGER.error("Invalid HVAC mode requested: %s", hvac_mode); return
         self.sync_state(command)
 
-    def turn_on(self) -> None:
-        """Turn on."""
-        _LOGGER.debug("turn_on()")
-        # Set to a default mode if turning on from off? Or just power on?
-        # Current implementation just sets power on, mode remains as last set.
-        command: Dict[str, int] = {"Pow": 1}
-        if self._auto_light:
-            command["Lig"] = 1
-            if self._has_light_sensor and self._enable_light_sensor:
-                command["LigSen"] = 0  # Check actual key name
-        self.sync_state(command)
-
-    def turn_off(self) -> None:
-        """Turn off."""
-        _LOGGER.debug("turn_off()")
-        command: Dict[str, int] = {"Pow": 0}
-        if self._auto_light:
-            command["Lig"] = 0
-            if self._has_light_sensor and self._enable_light_sensor:
-                command["LigSen"] = 1  # Check actual key name
-        self.sync_state(command)
+    def turn_on(self) -> None: _LOGGER.debug("Service call: turn_on()"); self.sync_state({"Pow": 1})
+    def turn_off(self) -> None: _LOGGER.debug("Service call: turn_off()"); self.sync_state({"Pow": 0})
 
     # --- HA Lifecycle Methods ---
-
     async def async_added_to_hass(self) -> None:
-        """Run when entity about to be added."""
-        _LOGGER.debug("Gree climate device added to hass()")
-        # Perform initial update
+        _LOGGER.debug("Gree climate device %s added to hass", self.name)
         await self.async_update()
 
-    async def async_update(self) -> None:  # Renamed and made async
-        """Fetch state from device. Handles encryption key retrieval."""
-        _LOGGER.debug("async_update() called")
+    async def async_update(self) -> None: await self.hass.async_add_executor_job(self._update_sync)
 
-        # Run blocking network I/O in executor
-        await self.hass.async_add_executor_job(self._update_sync)
-
-    def _update_sync(self) -> None:  # New synchronous wrapper for blocking code
+    def _update_sync(self) -> None:
         """Synchronous part of update logic. Handles binding and state sync."""
-        # Check if API is bound (has key). If not, attempt to bind.
         if not self._api._is_bound:
-            _LOGGER.info("API not bound, attempting to bind and get key...")
+            # _LOGGER.info("API not bound for %s, attempting bind...", self.name) # Reduce noise
             try:
-                # Call the synchronous binding method in the API
-                bound_ok = self._api.bind_and_get_key()
-
-                if not bound_ok:
-                    _LOGGER.error("Failed to bind device and get key.")
-                    # Mark as unavailable if binding failed
-                    if not self._disable_available_check:
-                        self._device_online = False
-                    return  # Stop update if binding failed
+                if not self._api.bind_and_get_key():
+                    if not self._disable_available_check: self._device_online = False; return
                 else:
-                    _LOGGER.info("Binding successful.")
-                    # Key is now stored in self._api._encryption_key
-                    # Update the climate entity's copy if still needed (might be removable later)
+                    _LOGGER.info("Binding successful for %s.", self.name)
                     self._encryption_key = self._api._encryption_key
-                    # Ensure API uses the new key (and satisfy mypy)
-                    if self._encryption_key is not None:
-                        self._api.update_encryption_key(self._encryption_key)
-                    else:
-                        # This case should not happen if binding was successful, but log if it does
-                        _LOGGER.error(
-                            "Binding successful but encryption key is None, cannot update API key."
-                        )
+                    if self._encryption_key is not None: self._api.update_encryption_key(self._encryption_key)
+                    else: _LOGGER.error("Binding ok but key is None for %s.", self.name)
             except Exception as e:
-                _LOGGER.error("Exception during binding: %s", e, exc_info=True)
-                if not self._disable_available_check:
-                    self._device_online = False
-                return  # Stop update if binding failed
+                _LOGGER.error("Exception during binding for %s: %s", self.name, e)
+                if not self._disable_available_check: self._device_online = False; return
 
-        # If bound (either initially or after successful binding), sync state
         if self._api._is_bound:
-            try:
-                self.sync_state()
+            try: self.sync_state()
             except Exception as e:
-                # Catch potential errors during sync_state after successful bind
-                _LOGGER.error(
-                    "Error during sync_state after binding: %s", e, exc_info=True
-                )
-                if not self._disable_available_check:
-                    self._device_online = False  # Mark offline if sync fails
-        else:
-            # This case should ideally not be reached if binding fails above, but as safety:
-            _LOGGER.error("Update failed: API is not bound.")
-            if not self._disable_available_check:
-                self._device_online = False
-
-    # --- Stubs for missing optional entity callbacks ---
-
-    async def _async_powersave_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle powersave entity state changes."""
-        # TODO: Implement logic similar to other callbacks
-        _LOGGER.debug("Powersave entity changed: %s", event.data.get("new_state"))
-        # Removed pass
-
-    async def _async_sleep_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle sleep entity state changes."""
-        # TODO: Implement logic similar to other callbacks
-        _LOGGER.debug("Sleep entity changed: %s", event.data.get("new_state"))
-        # Removed pass
-
-    async def _async_eightdegheat_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle 8degheat entity state changes."""
-        # TODO: Implement logic similar to other callbacks
-        _LOGGER.debug("8degheat entity changed: %s", event.data.get("new_state"))
-        # Removed pass
-
-    async def _async_air_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle air entity state changes."""
-        # TODO: Implement logic similar to other callbacks
-        _LOGGER.debug("Air entity changed: %s", event.data.get("new_state"))
-        # Removed pass
-
-    async def _async_anti_direct_blow_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle anti_direct_blow entity state changes."""
-        # TODO: Implement logic similar to other callbacks
-        _LOGGER.debug(
-            "Anti_direct_blow entity changed: %s", event.data.get("new_state")
-        )
-        # Removed pass
-
-    async def _async_light_sensor_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle light_sensor entity state changes."""
-        # TODO: Implement logic similar to other callbacks
-        _LOGGER.debug("Light_sensor entity changed: %s", event.data.get("new_state"))
-        # Removed pass
-
-    async def _async_auto_light_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle auto_light entity state changes."""
-        # TODO: Implement logic similar to other callbacks
-        _LOGGER.debug("Auto_light entity changed: %s", event.data.get("new_state"))
-        # Removed pass
-
-    async def _async_auto_xfan_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle auto_xfan entity state changes."""
-        # TODO: Implement logic similar to other callbacks
-        _LOGGER.debug("Auto_xfan entity changed: %s", event.data.get("new_state"))
-        # Removed pass
-
-    # Add type hints for remaining optional entity callbacks...
-    # ... (omitted for brevity, follow pattern of _async_health_entity_state_changed) ...
-
-    async def _async_target_temp_entity_state_changed(
-        self, event: Event[EventStateChangedData]
-    ) -> None:
-        """Handle target temp entity state changes."""
-        new_state: Optional[State] = event.data.get("new_state")
-        if new_state is None or new_state.state is None:
-            return
-        # Check if state actually changed compared to internal tracking
-        try:
-            new_temp_float = float(new_state.state)
-            if new_temp_float == self._target_temperature:
-                _LOGGER.debug(
-                    "target_temp_entity state change matches internal state, ignoring."
-                )
-                return
-        except (ValueError, TypeError):
-            _LOGGER.warning(
-                "Invalid state received from target_temp_entity: %s", new_state.state
-            )
-            return
-
-        # Avoid initial 'off' state triggering command (unlikely for temp sensor)
-        if new_state.state == STATE_OFF and event.data.get("old_state") is None:
-            return
-
-        self._async_update_current_target_temp(new_state)
-
-    @callback
-    def _async_update_current_target_temp(self, state: State) -> None:
-        """Update HVAC target temp based on entity state."""
-        try:
-            s_float = float(state.state)
-            s_int = int(s_float)  # Gree uses int temps
-            _LOGGER.debug("Updating HVAC target temp to: %d", s_int)
-            if const.MIN_TEMP <= s_int <= const.MAX_TEMP:
-                self.sync_state({"SetTem": s_int})
-            else:
-                _LOGGER.warning(
-                    "Target temp %s from entity is out of range (%d-%d)",
-                    s_float,
-                    const.MIN_TEMP,
-                    const.MAX_TEMP,
-                )
-        except (ValueError, TypeError):
-            _LOGGER.error(
-                "Unable to update target temp from entity state: %s", state.state
-            )
+                _LOGGER.error("Error during sync_state for %s: %s", self.name, e)
+                if not self._disable_available_check: self._device_online = False
+        elif not self._disable_available_check: self._device_online = False # Mark offline if not bound after attempt
