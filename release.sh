@@ -62,8 +62,11 @@ echo
 # --- Determine Repository ---
 echo "Determining GitHub repository..."
 remote_url=$(git remote get-url origin)
-# Extract owner/repo from URL (handles https and git@ formats)
-repo_full_name=$(echo "$remote_url" | sed -E 's/.*github.com[:\/](.*)\.git/\1/' | sed 's/\/$//')
+# Extract owner/repo from URL (handles https:// and git@ formats)
+# 1. Remove protocol and domain/host part up to github.com[:/]
+# 2. Remove optional trailing '.git'
+# 3. Remove optional trailing '/'
+repo_full_name=$(echo "$remote_url" | sed -E -e 's#^.*github\.com[:/](.*)#\1#' -e 's#\.git$##' -e 's#/$##')
 if [ -z "$repo_full_name" ] || [[ ! "$repo_full_name" == */* ]]; then
   print_error "Could not determine GitHub owner/repo from origin URL: $remote_url"
 fi
