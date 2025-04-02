@@ -12,6 +12,8 @@ This file tracks the project's progress using a task list format.
 *   [X] Fix `AttributeError: 'list' object has no attribute 'get'` in `SyncState` by correctly processing API response list. (2025-04-01 18:36:30)
 ## Current Tasks
 
+*   [ ] Implement Config Flow (Phase 1: Foundational Setup) based on `config_flow_plan_incremental.md`. (2025-04-01 22:33:45)
+
 *   [X] Initialize Memory Bank (`progress.md`, `decisionLog.md`, `systemPatterns.md`) (2025-04-01 18:57:32)
 *   [X] Add diagnostic logging for temperature handling in `climate.py`. (2025-04-01 19:04:16)
 *   [X] Analyze logs to confirm temperature issue root cause. (2025-04-01 19:04:16)
@@ -39,6 +41,11 @@ This file tracks the project's progress using a task list format.
 *   [X] Run `pylint` and fix high-severity issues (misplaced docstring). (2025-04-01 22:10:29)
 *   [X] Commit test fixes, static analysis fixes, and new files (`const.py`, `refactor_plan_incremental.md`). (2025-04-01 22:12:46)
 *   [X] Create release 2.14.23 using `release.sh`. (2025-04-01 22:13:12)
+*   [X] Fix bug discovered during release 2.14.23 testing (API response handling). (2025-04-01 22:17:45)
+*   [X] Improve test `test_update_gcm_key_retrieval_and_update` to validate state. (2025-04-01 22:19:33)
+*   [X] Commit API fix and test improvement. (2025-04-01 22:20:48)
+*   [X] Create release 2.14.24 using `release.sh`. (2025-04-01 22:21:07)
+*   [X] Manual testing of release 2.14.24 (Fix for API response handling). (2025-04-01 22:24:44)
 
 ## Next Steps
 
