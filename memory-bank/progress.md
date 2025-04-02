@@ -20,6 +20,7 @@ This file tracks the project's progress using a task list format.
 *   [X] Fix `PytestDeprecationWarning` by setting `asyncio_default_fixture_loop_scope` in `pytest.ini`. (2025-04-01 19:15:03)
 *   [X] Check type hints using `mypy`. (2025-04-01 19:16:32)
 *   [P] Address `pylint` issues (Partially complete for `device_api.py` and `climate.py`; paused due to extent of changes). (2025-04-01 19:35:05)
+*   [X] Create release automation script (`release.sh`). (2025-04-01 19:52:06)
 *   [ ] Define plan for improving the test suite.
 *   [ ] Update `homeassistant` dependency in `requirements_test.txt`.
 *   [ ] Install updated dependencies using `uv`.
@@ -31,6 +32,6 @@ This file tracks the project's progress using a task list format.
 
 ## Next Steps
 
+*   Make `release.sh` executable (`chmod +x release.sh`) and test.
 *   Continue with test suite improvement plan.
-*   Gather information about the test suite and dependencies.
 *   Create a detailed plan for test suite improvement.

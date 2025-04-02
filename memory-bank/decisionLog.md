@@ -159,3 +159,30 @@ This file records architectural and implementation decisions using a list format
 *   Updated Memory Bank (`progress.md`, `activeContext.md`) to reflect the paused status.
 
 ---
+
+## Decision
+
+*   [2025-04-01 19:50:12] Create a release automation script (`release.sh`).
+
+## Rationale
+
+*   Automate the process of tagging commits and creating GitHub releases to reduce manual effort and potential errors.
+*   The script will handle version incrementing based on existing tags.
+
+## Implementation Details (Plan)
+
+*   **Script Name:** `release.sh` (Bash)
+*   **Functionality:**
+    *   Check prerequisites (`git`, `gh`, auth status).
+    *   Verify clean working directory on `master` branch.
+    *   Fetch latest tags.
+    *   Find latest `X.Y.Z` tag.
+    *   Calculate next patch version (e.g., `X.Y.Z` -> `X.Y.(Z+1)`).
+    *   Confirm new tag with user.
+    *   Create and push git tag.
+    *   Create GitHub release using `gh release create <tag> --generate-notes --title "Release <tag>"`.
+    *   Report success and release URL.
+*   **Failure Handling:** If manual testing fails post-release, the user will fix the code and run the script again to create the *next* patch release (no automated rollback).
+*   **Implementation:** Created `release.sh` in project root with the specified functionality. Added a `--dry-run` option to allow verification of commands before execution.
+
+---

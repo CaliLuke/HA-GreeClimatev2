@@ -7,6 +7,7 @@
 
 ## Current Focus
 
+*   Test release automation script (`release.sh`).
 *   Paused `pylint` cleanup; focus on test suite improvement / dependency updates.
 *   Update `homeassistant` dependency to the latest version.
 
@@ -23,7 +24,9 @@
 ## Open Questions/Issues
 *   [2025-04-01 19:15:21] Fixed `PytestDeprecationWarning` by setting `asyncio_default_fixture_loop_scope = function` in `pytest.ini`.
 *   [2025-04-01 19:16:46] Verified type hints using `mypy`; no issues found.
+*   [2025-04-01 19:50:40] Planned release automation script (`release.sh`).
 *   [2025-04-01 19:35:22] Partially addressed `pylint` issues in `device_api.py` (score 9.51) and `climate.py` (score 9.38); paused further cleanup.
+*   [2025-04-01 19:52:23] Created release automation script (`release.sh`).
 
 *   What is the exact latest stable version of the `homeassistant` library on PyPI?
 *   What specific tests are failing or need improvement?
