@@ -35,3 +35,20 @@ This file records architectural and implementation decisions using a list format
 *   Use `uv pip install -r requirements_test.txt` to update the environment.
 
 ---
+
+## Decision
+
+*   [2025-04-01 18:36:58] Fix `AttributeError: 'list' object has no attribute 'get'` in `climate.py`'s `SyncState` method.
+
+## Rationale
+
+*   The `GreeGetValues` method (called by `SyncState`) was returning a list of status values from the API, but the subsequent code in `SyncState` was attempting to access this list using dictionary methods (`.get()`), causing the error reported in the logs.
+
+## Implementation Details
+
+*   Modified the `try...else` block within `SyncState` (around lines 1229-1283) in `custom_components/greev2/climate.py`.
+*   Added validation to check if `GreeGetValues` returns a list of the expected length.
+*   If valid, the list of values (`received_data_list`) is now correctly passed along with the list of property names (`self._optionsToFetch`) to the `SetAcOptions` method, which handles updating the internal state (`self._acOptions`).
+*   Improved error handling for connection issues and unexpected data formats.
+
+---

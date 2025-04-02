@@ -1227,25 +1227,27 @@ class GreeClimate(ClimateEntity):
         # --- Fetch Current State ---
         currentValues_list: Optional[List[Any]] = None  # Use temporary name
         try:
-            # Use the potentially updated fetch list
-            currentValuesDict: Optional[Dict[str, Any]] = self.GreeGetValues(
-                self._optionsToFetch
-            )
-            # GreeGetValues now returns dict or None. Convert dict values to list for SetAcOptions compatibility
-            if currentValuesDict is not None:
-                # Ensure order matches _optionsToFetch for SetAcOptions compatibility
-                currentValues_list = [
-                    currentValuesDict.get(key) for key in self._optionsToFetch
-                ]
-            else:
-                # Handle case where GreeGetValues failed
-                raise ConnectionError("Failed to get values from device.")
-            # Assign the list (or None) to the correctly typed variable
-            currentValues: Optional[List[Any]] = currentValues_list
+            # Fetch data from the device. Based on logs and behavior, GreeGetValues likely
+            # returns the raw list from the API's 'dat' field, despite its type hint.
+            raw_api_result = self.GreeGetValues(self._optionsToFetch)
 
-        except Exception as e:  # Catch connection errors etc.
+            # Validate the received data
+            if not isinstance(raw_api_result, list):
+                _LOGGER.error("GreeGetValues did not return a list as expected. Got: %s", type(raw_api_result))
+                raise ConnectionError("API returned unexpected data type.")
+
+            if len(raw_api_result) != len(self._optionsToFetch):
+                _LOGGER.error("API list length mismatch. Expected %d, got %d: %s",
+                              len(self._optionsToFetch), len(raw_api_result), raw_api_result)
+                raise ConnectionError("API returned list with unexpected length.")
+
+            # If validation passes, raw_api_result is the list we need
+            received_data_list: List[Any] = raw_api_result
+            _LOGGER.debug("Successfully received status list from API: %s", received_data_list)
+
+        except Exception as e:  # Catch connection errors or validation errors above
             _LOGGER.warning(
-                "Could not connect with device during SyncState. Error: %s", e
+                "Could not connect with or process data from device during SyncState. Error: %s", e
             )
             if not self._disable_available_check:
                 self._online_attempts += 1
@@ -1255,11 +1257,10 @@ class GreeClimate(ClimateEntity):
                         self._max_online_attempts,
                     )
                     self._device_online = False
-                    # Don't reset attempts here, wait for successful connection
-            # Exit SyncState if connection failed
+            # Exit SyncState if connection/processing failed
             return
         else:
-            # Connection successful, reset attempts and mark online
+            # Connection and data retrieval successful, reset attempts and mark online
             if not self._disable_available_check:
                 if not self._device_online:
                     _LOGGER.info("Device back online.")
@@ -1267,19 +1268,16 @@ class GreeClimate(ClimateEntity):
                 self._online_attempts = 0
 
             # --- Update Internal State ---
-            # Set latest status from device
-            if currentValues is not None:  # Check if values were successfully retrieved
-                self._acOptions = self.SetAcOptions(
-                    self._acOptions, self._optionsToFetch, currentValues
-                )
-            else:
-                _LOGGER.error(
-                    "Received None or invalid values from GreeGetValues, skipping state update."
-                )
-                # Optionally handle this case further, e.g., mark unavailable?
+            # Set latest status from device using the validated list
+            # SetAcOptions can handle list of keys and list of values
+            self._acOptions = self.SetAcOptions(
+                self._acOptions, self._optionsToFetch, received_data_list
+            )
+            _LOGGER.debug("Updated _acOptions with received data.")
 
-            # Overwrite status with our choices if commands were passed
-            if acOptions:  # Check if dict is not empty
+
+            # Overwrite status with our choices if commands were passed (acOptions is a dict)
+            if acOptions:  # Check if command dict is not empty
                 self._acOptions = self.SetAcOptions(self._acOptions, acOptions)
 
             # --- Send Commands (if needed) ---
