@@ -114,3 +114,4 @@ PRESET_MODES: List[str] = [
 GCM_DEFAULT_KEY: str = "{yxAHAY_Lm6pbC/<"  # Default key for GCM binding based on logs
 GCM_IV: bytes = b"\x54\x40\x78\x44\x49\x67\x5a\x51\x6c\x5e\x63\x13" # From device_api.py
 GCM_ADD: bytes = b"qualcomm-test" # From device_api.py
+
