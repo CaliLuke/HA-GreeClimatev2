@@ -53,7 +53,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Finished unloading Gree Climate V2 entry: %s", entry.entry_id)
     return unload_ok
-
 # Optional: If options flow is implemented later
 # async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
 #     """Handle options update."""

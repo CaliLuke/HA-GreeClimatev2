@@ -1,0 +1,23 @@
+{
+  "config": {
+    "title": "Gree Climate V2",
+    "step": {
+      "user": {
+        "title": "Connect to Gree Device",
+        "description": "Enter the IP address and MAC address of your Gree climate device. Ensure the device is powered on and connected to your network.",
+        "data": {
+          "host": "IP Address",
+          "mac": "MAC Address"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to device. Check IP address and ensure device is online.",
+      "invalid_auth": "Failed to bind to device. Check MAC address or ensure device is supported.",
+      "unknown": "An unknown error occurred."
+    },
+    "abort": {
+      "already_configured": "Device with this MAC address is already configured."
+    }
+  }
+}
