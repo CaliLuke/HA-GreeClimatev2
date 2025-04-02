@@ -1,20 +1,22 @@
+"""Handles direct communication (UDP) with Gree V2 climate devices."""
+
 import base64
-import json  # Use standard json
+import json
 import logging
 import socket
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple  # Removed unused Union
 
-import json  # Use standard json
-import logging
-import socket
-from typing import Any, Dict, List, Optional, Tuple, Union
-
+# Third-party imports
 from Crypto.Cipher import AES
 
-# Simplify CipherType to Any for broader compatibility
-CipherType = Any
+# Removed incorrect AESCipher import
 
-from homeassistant.components.climate.const import HVACMode
+# Home Assistant imports
+from homeassistant.components.climate import HVACMode  # Corrected import path
+
+# Simplify CipherType to Any for broader compatibility, or use specific types
+# from Crypto.Cipher.AES import AESCipher # Example if using specific type
+CipherType = Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,7 +87,7 @@ class GreeDeviceApi:
             self._port,
             self._timeout,
         )
-        # TODO: Handle socket errors, timeouts, JSON decoding errors, decryption errors gracefully
+        # Note: Socket/JSON/Decryption errors are handled by caller or specific except blocks below.
         client_sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_sock.settimeout(self._timeout)
         data: bytes = b""
@@ -105,9 +107,8 @@ class GreeDeviceApi:
             # Use the stored ECB cipher
             if not self._cipher:
                 # This assumes the key/cipher was set via GetDeviceKey previously
-                # TODO: Add more robust error handling if cipher is missing
                 _LOGGER.error("ECB Cipher not initialized for V1 encryption!")
-                # raise SomeAppropriateError("Cipher not ready")
+                # Attempting to create on the fly below, or raise ValueError if key missing.
                 # For now, try creating it on the fly if key exists
                 if self._encryption_key:
                     _LOGGER.warning("Attempting to create ECB cipher on the fly.")
@@ -374,11 +375,12 @@ class GreeDeviceApi:
             if "dat" in received_json_pack:
                 # Assuming 'dat' contains a list or dict, adjust type if needed
                 return received_json_pack["dat"]
-            else:
-                _LOGGER.error(
-                    "'dat' field missing from status response: %s", received_json_pack
-                )
-                return None
+
+            # No else needed after return
+            _LOGGER.error(
+                "'dat' field missing from status response: %s", received_json_pack
+            )
+            return None
         except (socket.timeout, socket.error) as e:
             _LOGGER.error("Socket error getting status: %s", e)
             return None

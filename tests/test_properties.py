@@ -84,17 +84,17 @@ async def test_properties_after_update(gree_climate_device: GreeClimateFactory) 
         "HeatCoolType": 0,
         "TemRec": 0,
     }
-    device._acOptions = (
+    device._ac_options = (
         simulated_acOptions  # No longer need ignore after fixing _acOptions type
     )
 
     # Manually call the update methods to reflect _acOptions in properties
     # (Normally update() would call these via UpdateHAStateToCurrentACState)
-    device.UpdateHAHvacMode()
-    device.UpdateHATargetTemperature()
-    device.UpdateHAFanMode()
-    device.UpdateHACurrentSwingMode()
-    device.UpdateHACurrentPresetMode()  # Call this even if horizontal_swing is false
+    device.update_ha_hvac_mode()
+    device.update_ha_target_temperature()
+    device.update_ha_fan_mode()
+    device.update_ha_current_swing_mode()
+    device.update_ha_current_preset_mode()  # Call this even if horizontal_swing is false
 
     assert device.hvac_mode == HVACMode.COOL
     assert device.target_temperature == 23.0  # Should be float

@@ -107,7 +107,7 @@ async def test_get_device_key_gcm(
     }  # Simulate successful bind
 
     # Call the GCM binding method (synchronous)
-    returned_key: bool = device_v2.GetDeviceKeyGCM()
+    returned_key: bool = device_v2.get_device_key_gcm()
 
     # Assertions
     # 1. Check _encrypt_gcm call - Use the exact plaintext from GetDeviceKeyGCM

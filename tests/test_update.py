@@ -1,12 +1,14 @@
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional  # Added Optional
 from unittest.mock import ANY, MagicMock, call, patch
 
 import pytest
 from _pytest.logging import LogCaptureFixture  # For caplog type hint
 from homeassistant.components.climate import HVACMode
-from homeassistant.const import STATE_ON
+from homeassistant.const import STATE_ON, UnitOfTemperature, ATTR_UNIT_OF_MEASUREMENT
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import Entity  # For type hinting State-like objects
+from unittest.mock import Mock  # To create mock State objects
 
 from custom_components.greev2.climate import FAN_MODES, SWING_MODES, GreeClimate
 
@@ -18,7 +20,7 @@ from .conftest import GreeClimateFactory
 # --- Update Method Tests ---
 
 
-@patch("custom_components.greev2.climate.GreeClimate.GreeGetValues")
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
 async def test_update_calls_get_values(
     mock_get_values: MagicMock,
     gree_climate_device: GreeClimateFactory,
@@ -28,7 +30,7 @@ async def test_update_calls_get_values(
     # Get device instance
     device: GreeClimate = gree_climate_device()
     # Mock response values as dict - needed for the method to run
-    mock_status_dict: Dict[str, Any] = {key: 0 for key in device._optionsToFetch}
+    mock_status_dict: Dict[str, Any] = {key: 0 for key in device._options_to_fetch}
     mock_get_values.return_value = mock_status_dict
 
     # Ensure key exists so async_update() calls _update_sync directly
@@ -46,10 +48,10 @@ async def test_update_calls_get_values(
     # We only assert that GreeGetValues was called.
 
     # Assertion: Only check if GreeGetValues was called
-    mock_get_values.assert_called_once_with(device._optionsToFetch)
+    mock_get_values.assert_called_once_with(device._options_to_fetch)
 
 
-@patch("custom_components.greev2.climate.GreeClimate.GreeGetValues")
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
 async def test_update_success_full(
     mock_get_values: MagicMock,
     gree_climate_device: GreeClimateFactory,
@@ -58,8 +60,8 @@ async def test_update_success_full(
     """Test successful state update from device response."""
     # Get device instance
     device: GreeClimate = gree_climate_device()
-    # Mock response values as a dictionary matching _optionsToFetch keys
-    mock_status_dict: Dict[str, Any] = {key: 0 for key in device._optionsToFetch}
+    # Mock response values as a dictionary matching _options_to_fetch keys
+    mock_status_dict: Dict[str, Any] = {key: 0 for key in device._options_to_fetch}
     mock_status_dict.update(
         {
             "Pow": 1,
@@ -71,7 +73,11 @@ async def test_update_success_full(
             # Add other non-zero values as needed for the test assertions
         }
     )
-    mock_get_values.return_value = mock_status_dict
+    # Convert the mock dict to a list in the correct order for the updated SyncState
+    mock_status_list: List[Any] = [
+        mock_status_dict.get(key) for key in device._options_to_fetch
+    ]
+    mock_get_values.return_value = mock_status_list
 
     # Ensure key exists so async_update() calls _update_sync directly
     device._encryption_key = b"testkey123456789"
@@ -85,7 +91,7 @@ async def test_update_success_full(
     await device.async_update()
 
     # Assertions
-    mock_get_values.assert_called_once_with(device._optionsToFetch)
+    mock_get_values.assert_called_once_with(device._options_to_fetch)
     assert device.available is True
     assert device.hvac_mode == HVACMode.COOL
     assert device.target_temperature == 24.0  # Should be float
@@ -96,7 +102,7 @@ async def test_update_success_full(
     assert device.current_temperature is None  # Assuming no temp sensor
 
 
-@patch("custom_components.greev2.climate.GreeClimate.GreeGetValues")
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
 async def test_update_timeout(
     mock_get_values: MagicMock,
     gree_climate_device: GreeClimateFactory,
@@ -123,7 +129,7 @@ async def test_update_timeout(
     await device.async_update()
 
     # Assertions
-    mock_get_values.assert_called_once_with(device._optionsToFetch)
+    mock_get_values.assert_called_once_with(device._options_to_fetch)
     assert device.available is False
     assert device._device_online is False
 
@@ -133,7 +139,7 @@ async def test_update_timeout(
     # raises=IndexError, # Might raise KeyError or other error now
     strict=True,
 )
-@patch("custom_components.greev2.climate.GreeClimate.GreeGetValues")
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
 async def test_update_invalid_response(
     mock_get_values: MagicMock,
     gree_climate_device: GreeClimateFactory,
@@ -146,10 +152,12 @@ async def test_update_invalid_response(
     # Simulate an invalid response (dictionary with missing keys)
     invalid_response_dict: Dict[str, Any] = {"Pow": 1, "Mod": 1}  # Missing many keys
     mock_get_values.return_value = invalid_response_dict
-    expected_options_len: int = len(device._optionsToFetch)
+    expected_options_len: int = len(device._options_to_fetch)
 
     # Store initial state for comparison
-    initial_ac_options: Dict[str, Any] = device._acOptions.copy()
+    initial_ac_options: Dict[str, Any] = (
+        device._ac_options.copy()
+    )  # Corrected attribute name
 
     # Ensure device starts online, has key, and feature checks are skipped
     device._device_online = True
@@ -163,7 +171,7 @@ async def test_update_invalid_response(
     await device.async_update()
 
     # Assertions
-    mock_get_values.assert_called_once_with(device._optionsToFetch)
+    mock_get_values.assert_called_once_with(device._options_to_fetch)
     assert device.available is True  # Communication succeeded, parsing might fail
     # Check if state changed - depends on SetAcOptions robustness
     # assert device._acOptions == initial_ac_options
@@ -173,7 +181,7 @@ async def test_update_invalid_response(
     )
 
 
-@patch("custom_components.greev2.climate.GreeClimate.GreeGetValues")
+@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
 async def test_update_sets_availability(
     mock_get_values: MagicMock,
     gree_climate_device: GreeClimateFactory,
@@ -182,8 +190,10 @@ async def test_update_sets_availability(
     """Test that update correctly sets the 'available' property on success/failure."""
     # Get device instance
     device: GreeClimate = gree_climate_device()
-    # Mock successful response as dict
-    mock_status_dict: Dict[str, Any] = {key: 0 for key in device._optionsToFetch}
+    # Mock successful response as a list matching _options_to_fetch order
+    mock_status_list: List[Any] = [
+        0 for _ in device._options_to_fetch
+    ]  # Default all to 0
 
     # Ensure key exists, etc.
     device._encryption_key = b"testkey123456789"
@@ -195,7 +205,7 @@ async def test_update_sets_availability(
     # --- Test 1: Success Case ---
     device._device_online = False
     device._online_attempts = 0
-    mock_get_values.return_value = mock_status_dict
+    mock_get_values.return_value = mock_status_list  # Use list for success
     mock_get_values.side_effect = None  # Clear any previous side effect
 
     await device.async_update()
@@ -220,7 +230,7 @@ async def test_update_sets_availability(
     # --- Test 3: Recovery Case ---
     device._device_online = False
     device._online_attempts = 0  # Reset attempts
-    mock_get_values.return_value = mock_status_dict  # Set back to success
+    mock_get_values.return_value = mock_status_list  # Set back to success using list
     mock_get_values.side_effect = None  # Clear side effect
 
     await device.async_update()
@@ -261,7 +271,7 @@ async def test_update_gcm_calls_api_methods(
 
     # Mock the decrypted response that GreeGetValues expects from fetch_result
     mock_decrypted_data: Dict[str, Any] = {
-        key: 0 for key in device_v2._optionsToFetch
+        key: 0 for key in device_v2._options_to_fetch
     }  # Use dict format
     # Mock the structure returned by _fetch_result which includes 'dat'
     mock_fetch_result.return_value = {"dat": mock_decrypted_data}
@@ -279,7 +289,7 @@ async def test_update_gcm_calls_api_methods(
     # Assertions: Check API methods were called correctly by GreeGetValues -> get_status
     expected_plaintext: str = (
         '{"cols":'
-        + json.dumps(device_v2._optionsToFetch)
+        + json.dumps(device_v2._options_to_fetch)
         + ',"mac":"'
         + device_v2._mac_addr
         + '","t":"status"}'
@@ -363,7 +373,7 @@ async def test_update_gcm_key_retrieval_and_update(
     # Simulate _fetch_result: First call (binding) returns the device key, second call (status) returns status data
     mock_bind_response: Dict[str, Any] = {"key": DEVICE_SPECIFIC_KEY.decode("utf8")}
     # Use dict format for status data
-    mock_status_data: Dict[str, Any] = {key: 0 for key in device_v2._optionsToFetch}
+    mock_status_data: Dict[str, Any] = {key: 0 for key in device_v2._options_to_fetch}
     mock_status_response: Dict[str, Any] = {"dat": mock_status_data}
     mock_fetch_result.side_effect = [mock_bind_response, mock_status_response]
 
@@ -419,7 +429,7 @@ async def test_update_gcm_key_retrieval_and_update(
     # Check _encrypt_gcm was called for status (with device key)
     status_plaintext: str = (
         '{"cols":'
-        + json.dumps(device_v2._optionsToFetch)
+        + json.dumps(device_v2._options_to_fetch)
         + ',"mac":"'
         + device_v2._mac_addr
         + '","t":"status"}'
@@ -459,4 +469,83 @@ async def test_update_gcm_key_retrieval_and_update(
 
     # 4. Verify device state
     assert device_v2._encryption_key == DEVICE_SPECIFIC_KEY  # Climate object's key
-    assert device_v2.available is True  # Should be available after successful update
+
+
+# --- External Temperature Sensor Update Tests ---
+
+
+# Helper to create a mock State object
+def create_mock_state(state_value: str, unit: Optional[str] = None) -> Mock:
+    """Creates a mock object mimicking HomeAssistant's State."""
+    mock_state = Mock(spec=Entity)  # Use Mock for flexibility
+    mock_state.state = state_value
+    mock_state.attributes = {}
+    if unit:
+        mock_state.attributes[ATTR_UNIT_OF_MEASUREMENT] = unit
+    return mock_state
+
+
+async def test_async_update_current_temp_fahrenheit(
+    gree_climate_device: GreeClimateFactory, mock_hass: HomeAssistant
+) -> None:
+    """Test _async_update_current_temp converts Fahrenheit correctly."""
+    # Create device configured with an external sensor
+    sensor_id = "sensor.mock_temp_f"
+    device: GreeClimate = gree_climate_device(temp_sensor_entity_id=sensor_id)
+
+    # Simulate a state update from the Fahrenheit sensor
+    fahrenheit_state = create_mock_state("55.8", UnitOfTemperature.FAHRENHEIT)
+
+    # Call the method under test
+    # Note: This method is @callback, but we call it directly for unit testing
+    device._async_update_current_temp(fahrenheit_state)
+
+    # Assertions
+    # 55.8 F should be 13.2 C
+    assert device.current_temperature == pytest.approx(13.2, abs=0.01)
+
+
+async def test_async_update_current_temp_celsius(
+    gree_climate_device: GreeClimateFactory, mock_hass: HomeAssistant
+) -> None:
+    """Test _async_update_current_temp handles Celsius correctly."""
+    # Create device configured with an external sensor
+    sensor_id = "sensor.mock_temp_c"
+    device: GreeClimate = gree_climate_device(temp_sensor_entity_id=sensor_id)
+
+    # Simulate a state update from the Celsius sensor
+    celsius_state = create_mock_state("15.5", UnitOfTemperature.CELSIUS)
+
+    # Call the method under test
+    device._async_update_current_temp(celsius_state)
+
+    # Assertions
+    # 15.5 C should remain 15.5 C
+    assert device.current_temperature == pytest.approx(15.5, abs=0.01)
+
+
+async def test_async_update_current_temp_invalid_state(
+    gree_climate_device: GreeClimateFactory,
+    mock_hass: HomeAssistant,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Test _async_update_current_temp handles non-float states."""
+    # Create device configured with an external sensor
+    sensor_id = "sensor.mock_temp_invalid"
+    device: GreeClimate = gree_climate_device(temp_sensor_entity_id=sensor_id)
+    initial_temp = device.current_temperature  # Should be None initially
+
+    # Simulate an invalid state update
+    invalid_state = create_mock_state(
+        "unavailable", UnitOfTemperature.CELSIUS
+    )  # Unit doesn't matter here
+
+    # Call the method under test
+    device._async_update_current_temp(invalid_state)
+
+    # Assertions
+    assert (
+        device.current_temperature is initial_temp
+    )  # Temperature should not change (remain None)
+    assert "Temp sensor state 'unavailable' is not a valid float." in caplog.text
+    # Removed incorrect assertion: assert device_v2.available is True

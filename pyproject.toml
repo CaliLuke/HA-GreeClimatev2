@@ -21,6 +21,7 @@ test = [
     "pycryptodome",
     "black",
     "mypy",
+    "pylint", # Added pylint
 ]
 
 # Optional: Build system configuration if packaging

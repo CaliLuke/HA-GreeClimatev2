@@ -151,7 +151,7 @@ def test_send_state_to_ac_gcm(
         "AntiDirectBlow": None,
         "LigSen": None,
     }
-    device._acOptions = initial_options.copy()  # Use a copy
+    device._ac_options = initial_options.copy()  # Use correct attribute name
 
     # 2. Setup Mock return values for API calls
     mock_pack: str = "mock_encrypted_state_pack"
@@ -164,9 +164,9 @@ def test_send_state_to_ac_gcm(
     # Mock the result from the device after sending command
     mock_fetch_result.return_value = {"r": 200, "opt": ["Pow"], "p": [1]}
 
-    # 3. Action: Call SendStateToAc directly
-    # timeout arg is unused in SendStateToAc now, pass dummy value or remove if signature changes
-    device.SendStateToAc(device._timeout)
+    # 3. Action: Call send_state_to_ac directly
+    # timeout arg was removed from send_state_to_ac
+    device.send_state_to_ac()
 
     # 4. Assertions
     # 4a. Check _encrypt_gcm call

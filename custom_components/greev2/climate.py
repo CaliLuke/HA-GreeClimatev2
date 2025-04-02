@@ -1,21 +1,22 @@
-#!/usr/bin/python
-# Do basic imports
-import base64
-import json  # Use standard json
-import logging
-import socket
-from datetime import timedelta
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Union
+"""Home Assistant platform for Gree Climate V2 devices."""
 
-import homeassistant.helpers.config_validation as cv
+import base64
+import logging
+from datetime import timedelta
+
+# Need Optional for type hints, Union for set_ac_options
+from typing import Any, Dict, List, Optional, Union
+
+# Third-party imports
+
+# Third-party imports
 import voluptuous as vol
 from Crypto.Cipher import AES
 
-# Simplify CipherType to Any for broader compatibility
-CipherType = Any
-
+# Home Assistant imports
+import homeassistant.helpers.config_validation as cv
 from homeassistant.components.climate import (
-    PLATFORM_SCHEMA as CLIMATE_PLATFORM_SCHEMA,  # Rename to avoid clash
+    PLATFORM_SCHEMA as CLIMATE_PLATFORM_SCHEMA,
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
@@ -31,22 +32,25 @@ from homeassistant.const import (
     STATE_OFF,
     STATE_ON,
     STATE_UNKNOWN,
-    UnitOfTemperature,  # Import for type hint
+    UnitOfTemperature,
 )
 from homeassistant.core import Event, HomeAssistant, State, callback
-from homeassistant.helpers.entity_platform import (
-    AddEntitiesCallback,
-)  # For async_add_devices type
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
     EventStateChangedData,
     async_track_state_change_event,
 )
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-# Import the new API class
-from .device_api import GreeDeviceApi  # CipherType is now Any, no need to import alias
+# Local imports
+from .device_api import GreeDeviceApi
 
-REQUIREMENTS: List[str] = ["pycryptodome"]
+# Simplify CipherType to Any for broader compatibility
+CipherType = Any
+
+REQUIREMENTS: List[str] = [
+    "pycryptodome"
+]  # This might be obsolete if managed by manifest.json
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -180,9 +184,12 @@ async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
     async_add_devices: AddEntitiesCallback,
-    discovery_info: Optional[DiscoveryInfoType] = None,
+    discovery_info: Optional[
+        DiscoveryInfoType
+    ] = None,  # pylint: disable=unused-argument
 ) -> None:
     """Set up the Gree Climate platform."""
+    # discovery_info is typically unused in modern YAML setup, but kept for signature compatibility
     _LOGGER.info("Setting up Gree climate platform")
     name: str = config[CONF_NAME]  # Use direct access after schema validation
     ip_addr: str = config[CONF_HOST]
@@ -320,7 +327,7 @@ class GreeClimate(ClimateEntity):
     _current_air: Optional[str] = None
     _current_anti_direct_blow: Optional[str] = None
 
-    _firstTimeRun: bool = True
+    _first_time_run: bool = True
     _enable_light_sensor: bool = False
     _auto_light: bool = False
     _auto_xfan: bool = False
@@ -331,9 +338,9 @@ class GreeClimate(ClimateEntity):
     _api: GreeDeviceApi
     # CIPHER is deprecated, managed by _api
 
-    # Type hint for _acOptions - values seem to be mostly int/None
-    _acOptions: Dict[str, Optional[int]]
-    _optionsToFetch: List[str]
+    # Type hint for _ac_options - values seem to be mostly int/None
+    _ac_options: Dict[str, Optional[int]]
+    _options_to_fetch: List[str]
     _preset_modes_list: List[str]  # Added for storing original list
 
     # Deprecated, remove if not used by HA core anymore
@@ -434,7 +441,7 @@ class GreeClimate(ClimateEntity):
         self._current_air = None
         self._current_anti_direct_blow = None
 
-        self._firstTimeRun = True
+        self._first_time_run = True
 
         self.encryption_version = encryption_version
         # self.CIPHER = None # Deprecated
@@ -471,8 +478,8 @@ class GreeClimate(ClimateEntity):
         else:
             self._uid = 0
 
-        # Initialize _acOptions with expected keys and None values
-        self._acOptions = {
+        # Initialize _ac_options with expected keys and None values
+        self._ac_options = {
             "Pow": None,
             "Mod": None,
             "SetTem": None,
@@ -498,7 +505,7 @@ class GreeClimate(ClimateEntity):
             "LigSen": None,
         }
         # Define keys to fetch initially
-        self._optionsToFetch = [
+        self._options_to_fetch = [
             "Pow",
             "Mod",
             "SetTem",
@@ -634,7 +641,7 @@ class GreeClimate(ClimateEntity):
         else:
             self._auto_xfan = False
 
-    def GetDeviceKey(self) -> bool:
+    def get_device_key(self) -> bool:
         """Retrieve device encryption key (V1/ECB)."""
         _LOGGER.info("Retrieving HVAC encryption key (ECB)")
         GENERIC_GREE_DEVICE_KEY: str = "a3K8Bx%2r8Y7#xDh"
@@ -650,7 +657,7 @@ class GreeClimate(ClimateEntity):
             padded_data: bytes = self._api._pad(bind_payload).encode("utf8")
             encrypted_pack_bytes: bytes = generic_cipher.encrypt(padded_data)
             pack: str = base64.b64encode(encrypted_pack_bytes).decode("utf-8")
-            jsonPayloadToSend: str = (
+            json_payload_to_send: str = (
                 '{"cid": "app","i": 1,"pack": "'
                 + pack
                 + '","t":"pack","tcid":"'
@@ -659,7 +666,7 @@ class GreeClimate(ClimateEntity):
             )
             # Call the API's fetch method
             result: Dict[str, Any] = self._api._fetch_result(
-                generic_cipher, jsonPayloadToSend
+                generic_cipher, json_payload_to_send
             )
             new_key_str: str = result["key"]
             self._encryption_key = new_key_str.encode("utf8")
@@ -672,14 +679,14 @@ class GreeClimate(ClimateEntity):
             self._device_online = False
             self._online_attempts = 0
             return False
-        else:
-            _LOGGER.info("Fetched device encrytion key (ECB): %s", self._encryption_key)
-            # self.CIPHER = AES.new(self._encryption_key, AES.MODE_ECB) # Deprecated
-            self._device_online = True
-            self._online_attempts = 0
-            return True
+        # No else needed after return
+        _LOGGER.info("Fetched device encrytion key (ECB): %s", self._encryption_key)
+        # self.CIPHER = AES.new(self._encryption_key, AES.MODE_ECB) # Deprecated
+        self._device_online = True
+        self._online_attempts = 0
+        return True
 
-    def GetDeviceKeyGCM(self) -> bool:
+    def get_device_key_gcm(self) -> bool:
         """Retrieve device encryption key (V2/GCM)."""
         _LOGGER.info("Retrieving HVAC encryption key (GCM)")
         GENERIC_GREE_DEVICE_KEY_GCM: bytes = GCM_DEFAULT_KEY.encode(
@@ -695,7 +702,7 @@ class GreeClimate(ClimateEntity):
             )
             # Call API's encrypt method
             pack, tag = self._api._encrypt_gcm(GENERIC_GREE_DEVICE_KEY_GCM, plaintext)
-            jsonPayloadToSend: str = (
+            json_payload_to_send: str = (
                 '{"cid": "app","i": 1,"pack": "'
                 + pack
                 + '","t":"pack","tcid":"'
@@ -709,7 +716,7 @@ class GreeClimate(ClimateEntity):
                 GENERIC_GREE_DEVICE_KEY_GCM
             )
             result: Dict[str, Any] = self._api._fetch_result(
-                cipher_gcm, jsonPayloadToSend
+                cipher_gcm, json_payload_to_send
             )
             new_key_str: str = result["key"]
             self._encryption_key = new_key_str.encode("utf8")
@@ -722,94 +729,97 @@ class GreeClimate(ClimateEntity):
             self._device_online = False
             self._online_attempts = 0
             return False
-        else:
-            _LOGGER.info("Fetched device encrytion key (GCM): %s", self._encryption_key)
-            self._device_online = True
-            self._online_attempts = 0
-            return True
+        # No else needed after return
+        _LOGGER.info("Fetched device encrytion key (GCM): %s", self._encryption_key)
+        self._device_online = True
+        self._online_attempts = 0
+        return True
 
-    def GreeGetValues(self, propertyNames: List[str]) -> Optional[Dict[str, Any]]:
+    def gree_get_values(self, property_names: List[str]) -> Optional[Dict[str, Any]]:
         """Get status values from the device using the API."""
-        _LOGGER.debug("Calling API get_status for properties: %s", propertyNames)
+        _LOGGER.debug("Calling API get_status for properties: %s", property_names)
         try:
             # Delegate fetching status to the API method
-            status_data: Optional[Dict[str, Any]] = self._api.get_status(propertyNames)
+            status_data: Optional[Dict[str, Any]] = self._api.get_status(property_names)
 
             if status_data is not None:
                 _LOGGER.debug(
                     "Successfully received status data via API: %s", status_data
                 )
                 return status_data
-            else:
-                _LOGGER.error("API get_status returned None, indicating failure.")
-                # Return None to indicate failure more clearly
-                return None
+            # No else needed after return
+            _LOGGER.error("API get_status returned None, indicating failure.")
+            # Return None to indicate failure more clearly
+            return None
         except Exception as e:
             _LOGGER.error("Error calling self._api.get_status: %s", e, exc_info=True)
             # Return None on error
             return None
 
-    def SetAcOptions(
+    def set_ac_options(
         self,
-        acOptions: Dict[str, Optional[int]],
-        newOptionsToOverride: Union[List[str], Dict[str, Any]],  # Can be list or dict
-        optionValuesToOverride: Optional[
+        ac_options: Dict[str, Optional[int]],
+        new_options_to_override: Union[
+            List[str], Dict[str, Any]
+        ],  # Can be list or dict
+        option_values_to_override: Optional[
             List[Any]
-        ] = None,  # Should be List if newOptionsToOverride is List
+        ] = None,  # Should be List if new_options_to_override is List
     ) -> Dict[str, Optional[int]]:
-        """Update the internal _acOptions dictionary."""
-        if optionValuesToOverride is not None and isinstance(
-            newOptionsToOverride, list
+        """Update the internal _ac_options dictionary."""
+        if option_values_to_override is not None and isinstance(
+            new_options_to_override, list
         ):
-            _LOGGER.debug("Setting acOptions with retrieved HVAC values")
-            if len(newOptionsToOverride) != len(optionValuesToOverride):
+            _LOGGER.debug("Setting ac_options with retrieved HVAC values")
+            if len(new_options_to_override) != len(option_values_to_override):
                 _LOGGER.error(
-                    "SetAcOptions error: Mismatched lengths for keys (%d) and values (%d)",
-                    len(newOptionsToOverride),
-                    len(optionValuesToOverride),
+                    "set_ac_options error: Mismatched lengths for keys (%d) and values (%d)",
+                    len(new_options_to_override),
+                    len(option_values_to_override),
                 )
                 # Potentially raise error or return unchanged options?
                 # For now, log and continue, but this indicates a problem.
             else:
-                for i, key in enumerate(newOptionsToOverride):
-                    value = optionValuesToOverride[i]
+                for i, key in enumerate(new_options_to_override):
+                    value = option_values_to_override[i]
                     # Basic type check/conversion - assumes values are mostly int
                     try:
-                        acOptions[key] = int(value) if value is not None else None
+                        ac_options[key] = int(value) if value is not None else None
                     except (ValueError, TypeError):
                         _LOGGER.warning(
                             "Could not convert value '%s' to int for key '%s'. Storing as None.",
                             value,
                             key,
                         )
-                        acOptions[key] = None
-                    _LOGGER.debug("Setting %s: %s", key, acOptions[key])
-            _LOGGER.debug("Done setting acOptions")
-        elif isinstance(newOptionsToOverride, dict):
-            _LOGGER.debug("Overwriting acOptions with new settings")
-            for key, value in newOptionsToOverride.items():
+                        ac_options[key] = None
+                    _LOGGER.debug("Setting %s: %s", key, ac_options[key])
+            _LOGGER.debug("Done setting ac_options")
+        elif isinstance(new_options_to_override, dict):
+            _LOGGER.debug("Overwriting ac_options with new settings")
+            for key, value in new_options_to_override.items():
                 # Basic type check/conversion
                 try:
-                    acOptions[key] = int(value) if value is not None else None
+                    ac_options[key] = int(value) if value is not None else None
                 except (ValueError, TypeError):
                     _LOGGER.warning(
                         "Could not convert value '%s' to int for key '%s'. Storing as None.",
                         value,
                         key,
                     )
-                    acOptions[key] = None
-                _LOGGER.debug("Overwriting %s: %s", key, acOptions[key])
-            _LOGGER.debug("Done overwriting acOptions")
+                    ac_options[key] = None
+                _LOGGER.debug("Overwriting %s: %s", key, ac_options[key])
+            _LOGGER.debug("Done overwriting ac_options")
         else:
-            _LOGGER.error("Invalid arguments passed to SetAcOptions.")
+            _LOGGER.error("Invalid arguments passed to set_ac_options.")
             # Return unchanged options if arguments are invalid
-        return acOptions
+        return ac_options
 
-    def SendStateToAc(
-        self, timeout: int
-    ) -> Optional[Dict[str, Any]]:  # timeout seems unused now? API uses self._timeout
-        """Send the current state (_acOptions) to the AC unit."""
+    def send_state_to_ac(
+        self,
+    ) -> Optional[Dict[str, Any]]:  # Removed unused 'timeout' argument
+        """Send the current state (_ac_options) to the AC unit."""
         # Define default options
+        # Note: timeout is handled by the self._api instance's timeout setting
         opt_keys: List[str] = [
             "Pow",
             "Mod",
@@ -838,10 +848,10 @@ class GreeClimate(ClimateEntity):
         if self._has_light_sensor:
             opt_keys.append("LigSen")  # Check actual key name used by device
 
-        # Get the corresponding values from _acOptions
+        # Get the corresponding values from _ac_options
         # Note: Ensure the order matches opt_keys precisely!
         # Handle potential None values gracefully if needed by API
-        p_values: List[Any] = [self._acOptions.get(key) for key in opt_keys]
+        p_values: List[Any] = [self._ac_options.get(key) for key in opt_keys]
 
         _LOGGER.debug(
             "Calling API send_command with opt_keys: %s, p_values: %s",
@@ -853,37 +863,38 @@ class GreeClimate(ClimateEntity):
         try:
             # Pass opt_keys and the corresponding values
             # The API method now handles JSON construction, encryption, and network I/O
-            receivedJsonPayload: Optional[Dict[str, Any]] = self._api.send_command(
+            received_json_payload: Optional[Dict[str, Any]] = self._api.send_command(
                 opt_keys, p_values
             )
 
-            if receivedJsonPayload:
+            if received_json_payload:
                 _LOGGER.debug(
                     "Successfully sent command via API. Response pack: %s",
-                    receivedJsonPayload,
+                    received_json_payload,
                 )
                 # Potentially process the response here if needed by GreeClimate
                 # For now, just logging success.
-                return receivedJsonPayload  # Return the response pack
-            else:
-                _LOGGER.error(
-                    "API send_command returned None or False, indicating failure."
-                )
-                return None
+                return received_json_payload  # Return the response pack
+            # No else needed after return
+            _LOGGER.error(
+                "API send_command returned None or False, indicating failure."
+            )
+            return None
         except Exception as e:
             _LOGGER.error("Error calling self._api.send_command: %s", e, exc_info=True)
             return None
 
-    def UpdateHATargetTemperature(self) -> None:
+    def update_ha_target_temperature(self) -> None:
         """Update HA target temperature based on internal state."""
-        # Sync set temperature to HA. If 8℃ heating is active we set the temp in HA to 8℃ so that it shows the same as the AC display.
-        if self._acOptions.get("StHt") == 1:
+        # Sync set temperature to HA. If 8℃ heating is active, set HA temp to 8℃
+        # to match the AC display.
+        if self._ac_options.get("StHt") == 1:
             self._target_temperature = 8.0  # Use float
             _LOGGER.debug(
                 "HA target temp set according to HVAC state to 8.0℃ since 8℃ heating mode is active"
             )
         else:
-            set_temp = self._acOptions.get("SetTem")
+            set_temp = self._ac_options.get("SetTem")
             self._target_temperature = float(set_temp) if set_temp is not None else None
 
             if self._target_temp_entity_id and self._target_temperature is not None:
@@ -907,11 +918,17 @@ class GreeClimate(ClimateEntity):
                 self._target_temperature,
             )
 
-    def UpdateHAOptions(self) -> None:
+    def update_ha_options(self) -> None:
         """Update HA state for various options based on internal state."""
-        # Sync HA with retreived HVAC options
-        # WdSpd = fanspeed (0=auto), SvSt = powersave, Air = Air in/out (1=air in, 2=air out), Health = health
-        # SwhSlp,SlpMod = sleep (both needed for sleep deactivation), StHt = 8℃ deg heating, Lig = lights, Blo = xfan
+        # Sync HA with retrieved HVAC options:
+        # WdSpd: Fan speed (0=auto)
+        # SvSt: Power save
+        # Air: Air mode (1=in, 2=out) - Needs verification
+        # Health: Health mode
+        # SwhSlp, SlpMod: Sleep mode (both needed?)
+        # StHt: 8℃ heating mode
+        # Lig: Lights
+        # Blo: XFan (Blow)
 
         # Helper to update state
         def _update_entity_state(
@@ -954,7 +971,7 @@ class GreeClimate(ClimateEntity):
             return new_state  # Return the new state that was set (or attempted)
 
         # Sync Lights
-        lig_val = self._acOptions.get("Lig")
+        lig_val = self._ac_options.get("Lig")
         new_lights_state = (
             STATE_ON if lig_val == 1 else STATE_OFF if lig_val == 0 else STATE_UNKNOWN
         )
@@ -963,7 +980,7 @@ class GreeClimate(ClimateEntity):
         )
 
         # Sync XFan
-        blo_val = self._acOptions.get("Blo")
+        blo_val = self._ac_options.get("Blo")
         new_xfan_state = (
             STATE_ON if blo_val == 1 else STATE_OFF if blo_val == 0 else STATE_UNKNOWN
         )
@@ -972,7 +989,7 @@ class GreeClimate(ClimateEntity):
         )
 
         # Sync Health
-        health_val = self._acOptions.get("Health")
+        health_val = self._ac_options.get("Health")
         new_health_state = (
             STATE_ON
             if health_val == 1
@@ -983,7 +1000,7 @@ class GreeClimate(ClimateEntity):
         )
 
         # Sync PowerSave
-        svst_val = self._acOptions.get("SvSt")
+        svst_val = self._ac_options.get("SvSt")
         new_powersave_state = (
             STATE_ON if svst_val == 1 else STATE_OFF if svst_val == 0 else STATE_UNKNOWN
         )
@@ -992,8 +1009,8 @@ class GreeClimate(ClimateEntity):
         )
 
         # Sync Sleep
-        swhslp_val = self._acOptions.get("SwhSlp")
-        slpmod_val = self._acOptions.get("SlpMod")
+        swhslp_val = self._ac_options.get("SwhSlp")
+        slpmod_val = self._ac_options.get("SlpMod")
         new_sleep_state = (
             STATE_ON
             if (swhslp_val == 1 and slpmod_val == 1)
@@ -1004,7 +1021,7 @@ class GreeClimate(ClimateEntity):
         )
 
         # Sync 8 Degree Heat
-        stht_val = self._acOptions.get("StHt")
+        stht_val = self._ac_options.get("StHt")
         new_8deg_state = (
             STATE_ON if stht_val == 1 else STATE_OFF if stht_val == 0 else STATE_UNKNOWN
         )
@@ -1013,7 +1030,7 @@ class GreeClimate(ClimateEntity):
         )
 
         # Sync Air
-        air_val = self._acOptions.get("Air")
+        air_val = self._ac_options.get("Air")
         new_air_state = (
             STATE_ON if air_val == 1 else STATE_OFF if air_val == 0 else STATE_UNKNOWN
         )  # Assuming 1=ON, 0=OFF
@@ -1023,7 +1040,7 @@ class GreeClimate(ClimateEntity):
 
         # Sync Anti Direct Blow (only if feature exists)
         if self._has_anti_direct_blow:
-            adb_val = self._acOptions.get("AntiDirectBlow")
+            adb_val = self._ac_options.get("AntiDirectBlow")
             new_adb_state = (
                 STATE_ON
                 if adb_val == 1
@@ -1035,13 +1052,13 @@ class GreeClimate(ClimateEntity):
                 new_adb_state,
             )
 
-    def UpdateHAHvacMode(self) -> None:
+    def update_ha_hvac_mode(self) -> None:
         """Update HA HVAC mode based on internal state."""
-        pow_state = self._acOptions.get("Pow")
+        pow_state = self._ac_options.get("Pow")
         if pow_state == 0:
             self._hvac_mode = HVACMode.OFF
         else:
-            mod_index = self._acOptions.get("Mod")
+            mod_index = self._ac_options.get("Mod")
             if mod_index is not None and 0 <= mod_index < len(self._attr_hvac_modes):
                 self._hvac_mode = self._attr_hvac_modes[mod_index]
             else:
@@ -1052,9 +1069,9 @@ class GreeClimate(ClimateEntity):
             self._hvac_mode,
         )
 
-    def UpdateHACurrentSwingMode(self) -> None:
+    def update_ha_current_swing_mode(self) -> None:
         """Update HA vertical swing mode based on internal state."""
-        swing_index = self._acOptions.get("SwUpDn")
+        swing_index = self._ac_options.get("SwUpDn")
         if swing_index is not None and 0 <= swing_index < len(self._attr_swing_modes):
             self._swing_mode = self._attr_swing_modes[swing_index]
         else:
@@ -1067,13 +1084,13 @@ class GreeClimate(ClimateEntity):
             self._swing_mode,
         )
 
-    def UpdateHACurrentPresetMode(self) -> None:
+    def update_ha_current_preset_mode(self) -> None:
         """Update HA horizontal swing (preset) mode based on internal state."""
         if not self._horizontal_swing:
             self._preset_mode = None
             return
 
-        preset_index = self._acOptions.get("SwingLfRig")
+        preset_index = self._ac_options.get("SwingLfRig")
         if (
             self._attr_preset_modes
             and preset_index is not None
@@ -1091,16 +1108,16 @@ class GreeClimate(ClimateEntity):
             self._preset_mode,
         )
 
-    def UpdateHAFanMode(self) -> None:
+    def update_ha_fan_mode(self) -> None:
         """Update HA fan mode based on internal state."""
-        if self._acOptions.get("Tur") == 1:
+        if self._ac_options.get("Tur") == 1:
             self._fan_mode = "Turbo"
         elif (
-            self._acOptions.get("Quiet") == 1
+            self._ac_options.get("Quiet") == 1
         ):  # Check for 1 specifically? Docs say >=1
             self._fan_mode = "Quiet"
         else:
-            speed_index = self._acOptions.get("WdSpd")
+            speed_index = self._ac_options.get("WdSpd")
             if speed_index is not None and 0 <= speed_index < len(self._attr_fan_modes):
                 self._fan_mode = self._attr_fan_modes[speed_index]
             else:
@@ -1111,16 +1128,19 @@ class GreeClimate(ClimateEntity):
             self._fan_mode,
         )
 
-    def UpdateHACurrentTemperature(self) -> None:
+    def update_ha_current_temperature(self) -> None:
         """Update HA current temperature based on internal state or sensor."""
         if not self._temp_sensor_entity_id:
             if self._has_temp_sensor:
-                temp_sen = self._acOptions.get("TemSen")
+                temp_sen = self._ac_options.get("TemSen")
                 if temp_sen is not None:
-                    # Apply offset logic
-                    temp = float(
+                    # Apply offset logic (TEMP_OFFSET = 40)
+                    # NOTE: Offset logic might be device-specific and needs verification.
+                    # NOTE: Assumes internal sensor reports Celsius; add conversion if TemUn indicates Fahrenheit.
+                    temp_val_before_offset = (
                         temp_sen if temp_sen <= TEMP_OFFSET else temp_sen - TEMP_OFFSET
                     )
+                    temp = float(temp_val_before_offset)
                     # Use the HA unit system - assumes Celsius from device
                     # No conversion needed if device is Celsius and HA is Celsius
                     self._current_temperature = temp
@@ -1140,38 +1160,38 @@ class GreeClimate(ClimateEntity):
                 )
         # If external sensor is configured, _async_update_current_temp handles updates
 
-    def UpdateHAStateToCurrentACState(self) -> None:
-        """Update all HA state properties based on the current _acOptions."""
-        self.UpdateHATargetTemperature()
-        self.UpdateHAOptions()
-        self.UpdateHAHvacMode()
-        self.UpdateHACurrentSwingMode()
+    def update_ha_state_to_current_ac_state(self) -> None:
+        """Update all HA state properties based on the current _ac_options."""
+        self.update_ha_target_temperature()
+        self.update_ha_options()
+        self.update_ha_hvac_mode()
+        self.update_ha_current_swing_mode()
         # Only update preset if supported
         if self._horizontal_swing:
-            self.UpdateHACurrentPresetMode()
-        self.UpdateHAFanMode()
-        self.UpdateHACurrentTemperature()
+            self.update_ha_current_preset_mode()
+        self.update_ha_fan_mode()
+        self.update_ha_current_temperature()
 
-    def SyncState(
-        self, acOptions: Optional[Dict[str, Any]] = None
+    def sync_state(
+        self, ac_options: Optional[Dict[str, Any]] = None
     ) -> None:  # Return None, side effects only
         """Fetch state, update internal state, optionally send commands, update HA state."""
-        _LOGGER.debug("Starting SyncState")
-        if acOptions is None:
-            acOptions = {}  # Ensure acOptions is a dict
+        _LOGGER.debug("Starting sync_state")
+        if ac_options is None:
+            ac_options = {}  # Ensure ac_options is a dict
 
         # --- Feature Detection (Run only once or if status is None) ---
         if self._has_temp_sensor is None and not self._temp_sensor_entity_id:
             _LOGGER.debug("Attempting to check for built-in temperature sensor")
             try:
-                temp_sensor_check = self.GreeGetValues(
+                temp_sensor_check = self.gree_get_values(
                     ["TemSen"]
                 )  # Returns dict or None
                 if temp_sensor_check is not None and "TemSen" in temp_sensor_check:
                     self._has_temp_sensor = True
                     # Add TemSen to fetch list if not already present
-                    if "TemSen" not in self._optionsToFetch:
-                        self._optionsToFetch.append("TemSen")
+                    if "TemSen" not in self._options_to_fetch:
+                        self._options_to_fetch.append("TemSen")
                     _LOGGER.info("Device has a built-in temperature sensor.")
                 else:
                     self._has_temp_sensor = False
@@ -1189,11 +1209,11 @@ class GreeClimate(ClimateEntity):
         if self._has_anti_direct_blow is None and self._anti_direct_blow_entity_id:
             _LOGGER.debug("Attempting to check for anti-direct blow feature")
             try:
-                adb_check = self.GreeGetValues(["AntiDirectBlow"])
+                adb_check = self.gree_get_values(["AntiDirectBlow"])
                 if adb_check is not None and "AntiDirectBlow" in adb_check:
                     self._has_anti_direct_blow = True
-                    if "AntiDirectBlow" not in self._optionsToFetch:
-                        self._optionsToFetch.append("AntiDirectBlow")
+                    if "AntiDirectBlow" not in self._options_to_fetch:
+                        self._options_to_fetch.append("AntiDirectBlow")
                     _LOGGER.info("Device has anti-direct blow feature.")
                 else:
                     self._has_anti_direct_blow = False
@@ -1209,11 +1229,13 @@ class GreeClimate(ClimateEntity):
         if self._has_light_sensor is None and self._light_sensor_entity_id:
             _LOGGER.debug("Attempting to check for built-in light sensor")
             try:
-                light_sensor_check = self.GreeGetValues(["LigSen"])  # Check actual key
+                light_sensor_check = self.gree_get_values(
+                    ["LigSen"]
+                )  # Check actual key
                 if light_sensor_check is not None and "LigSen" in light_sensor_check:
                     self._has_light_sensor = True
-                    if "LigSen" not in self._optionsToFetch:
-                        self._optionsToFetch.append("LigSen")
+                    if "LigSen" not in self._options_to_fetch:
+                        self._options_to_fetch.append("LigSen")
                     _LOGGER.info("Device has a built-in light sensor.")
                 else:
                     self._has_light_sensor = False
@@ -1225,29 +1247,39 @@ class GreeClimate(ClimateEntity):
                 self._has_light_sensor = False
 
         # --- Fetch Current State ---
-        currentValues_list: Optional[List[Any]] = None  # Use temporary name
+        # Removed unused variable: currentValues_list
         try:
-            # Fetch data from the device. Based on logs and behavior, GreeGetValues likely
-            # returns the raw list from the API's 'dat' field, despite its type hint.
-            raw_api_result = self.GreeGetValues(self._optionsToFetch)
+            # Fetch data from the device. Based on logs and behavior, gree_get_values
+            # likely returns the raw list from the API's 'dat' field.
+            raw_api_result = self.gree_get_values(self._options_to_fetch)
 
             # Validate the received data
             if not isinstance(raw_api_result, list):
-                _LOGGER.error("GreeGetValues did not return a list as expected. Got: %s", type(raw_api_result))
+                _LOGGER.error(
+                    "gree_get_values did not return a list as expected. Got: %s",
+                    type(raw_api_result),
+                )
                 raise ConnectionError("API returned unexpected data type.")
 
-            if len(raw_api_result) != len(self._optionsToFetch):
-                _LOGGER.error("API list length mismatch. Expected %d, got %d: %s",
-                              len(self._optionsToFetch), len(raw_api_result), raw_api_result)
+            if len(raw_api_result) != len(self._options_to_fetch):
+                _LOGGER.error(
+                    "API list length mismatch. Expected %d, got %d: %s",
+                    len(self._options_to_fetch),
+                    len(raw_api_result),
+                    raw_api_result,
+                )
                 raise ConnectionError("API returned list with unexpected length.")
 
             # If validation passes, raw_api_result is the list we need
             received_data_list: List[Any] = raw_api_result
-            _LOGGER.debug("Successfully received status list from API: %s", received_data_list)
+            _LOGGER.debug(
+                "Successfully received status list from API: %s", received_data_list
+            )
 
         except Exception as e:  # Catch connection errors or validation errors above
             _LOGGER.warning(
-                "Could not connect with or process data from device during SyncState. Error: %s", e
+                "Could not connect with or process data from device during sync_state. Error: %s",
+                e,
             )
             if not self._disable_available_check:
                 self._online_attempts += 1
@@ -1257,42 +1289,42 @@ class GreeClimate(ClimateEntity):
                         self._max_online_attempts,
                     )
                     self._device_online = False
-            # Exit SyncState if connection/processing failed
+            # Exit sync_state if connection/processing failed
             return
-        else:
-            # Connection and data retrieval successful, reset attempts and mark online
-            if not self._disable_available_check:
-                if not self._device_online:
-                    _LOGGER.info("Device back online.")
-                self._device_online = True
-                self._online_attempts = 0
+        # No else needed after return
 
-            # --- Update Internal State ---
-            # Set latest status from device using the validated list
-            # SetAcOptions can handle list of keys and list of values
-            self._acOptions = self.SetAcOptions(
-                self._acOptions, self._optionsToFetch, received_data_list
-            )
-            _LOGGER.debug("Updated _acOptions with received data.")
+        # Connection and data retrieval successful, reset attempts and mark online
+        if not self._disable_available_check:
+            if not self._device_online:
+                _LOGGER.info("Device back online.")
+            self._device_online = True
+            self._online_attempts = 0
 
+        # --- Update Internal State ---
+        # Set latest status from device using the validated list
+        # set_ac_options can handle list of keys and list of values
+        self._ac_options = self.set_ac_options(
+            self._ac_options, self._options_to_fetch, received_data_list
+        )
+        _LOGGER.debug("Updated _ac_options with received data.")
 
-            # Overwrite status with our choices if commands were passed (acOptions is a dict)
-            if acOptions:  # Check if command dict is not empty
-                self._acOptions = self.SetAcOptions(self._acOptions, acOptions)
+        # Overwrite status with our choices if commands were passed (ac_options is a dict)
+        if ac_options:  # Check if command dict is not empty
+            self._ac_options = self.set_ac_options(self._ac_options, ac_options)
 
-            # --- Send Commands (if needed) ---
-            # If not the first (boot) run AND commands were passed, update state towards the HVAC
-            if not self._firstTimeRun and acOptions:
-                self.SendStateToAc(self._timeout)  # timeout arg seems unused?
-            elif self._firstTimeRun:
-                # loop used once for Gree Climate initialisation only
-                self._firstTimeRun = False
+        # --- Send Commands (if needed) ---
+        # If not the first (boot) run AND commands were passed, update state towards the HVAC
+        if not self._first_time_run and ac_options:
+            self.send_state_to_ac(self._timeout)  # timeout arg seems unused?
+        elif self._first_time_run:
+            # loop used once for Gree Climate initialisation only
+            self._first_time_run = False
 
-            # --- Update HA State ---
-            self.UpdateHAStateToCurrentACState()
+        # --- Update HA State ---
+        self.update_ha_state_to_current_ac_state()
 
-            _LOGGER.debug("Finished SyncState")
-            # No return value needed
+        _LOGGER.debug("Finished sync_state")
+        # No return value needed
 
     # --- State Change Callbacks ---
 
@@ -1328,18 +1360,38 @@ class GreeClimate(ClimateEntity):
         unit: Optional[str] = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
         try:
             _state_val: str = state.state
-            _LOGGER.debug("Current state temp_sensor: %s", _state_val)
+            # _LOGGER.debug("Current state temp_sensor: %s", _state_val) # Keep this? Maybe not needed now.
             if self.represents_float(_state_val):
                 temp_value = float(_state_val)
-                # Ensure unit matches HA config if possible, though ClimateEntity handles conversion
-                # For now, assume sensor provides value in HA's configured unit or Celsius
-                self._current_temperature = temp_value
-                _LOGGER.debug("Current temp set to: %s", self._current_temperature)
+
+                # Convert Fahrenheit to Celsius if necessary
+                if unit == UnitOfTemperature.FAHRENHEIT:
+                    celsius_temp = (temp_value - 32.0) * 5.0 / 9.0
+                    self._current_temperature = round(
+                        celsius_temp, 1
+                    )  # Store as Celsius, rounded
+                    _LOGGER.debug(
+                        "External sensor (%s °F) converted to %s °C",
+                        temp_value,
+                        self._current_temperature,
+                    )
+                else:
+                    # Assume Celsius or handle other units if needed
+                    self._current_temperature = temp_value  # Store directly
+                    _LOGGER.debug(
+                        "External sensor (%s %s) stored directly",
+                        temp_value,
+                        unit or "°C assumed",
+                    )
+
+                # Log the final stored value (which should always be Celsius)
+                # _LOGGER.debug("Current temp set to: %s", self._current_temperature) # Redundant with above logs
+
             else:
                 _LOGGER.warning(
                     "Temp sensor state '%s' is not a valid float.", _state_val
                 )
-                # Optionally set _current_temperature to None or keep old value?
+                # Setting to None if invalid seems safer.
                 # Setting to None if invalid seems safer.
                 self._current_temperature = None
         except (ValueError, TypeError) as ex:
@@ -1388,7 +1440,7 @@ class GreeClimate(ClimateEntity):
             return
 
         self._async_update_current_lights(new_state)
-        # No need to schedule update here, SyncState handles HA state updates
+        # No need to schedule update here, sync_state handles HA state updates
 
     @callback
     def _async_update_current_lights(self, state: State) -> None:
@@ -1397,9 +1449,9 @@ class GreeClimate(ClimateEntity):
             "Updating HVAC with changed lights_entity state | %s", state.state
         )
         if state.state == STATE_ON:
-            self.SyncState({"Lig": 1})
+            self.sync_state({"Lig": 1})
         elif state.state == STATE_OFF:
-            self.SyncState({"Lig": 0})
+            self.sync_state({"Lig": 0})
         else:
             _LOGGER.error(
                 "Unable to update from lights_entity: Invalid state %s", state.state
@@ -1443,22 +1495,25 @@ class GreeClimate(ClimateEntity):
         """Update HVAC xfan based on entity state."""
         _LOGGER.debug("Updating HVAC with changed xfan_entity state | %s", state.state)
         if state.state == STATE_ON:
-            self.SyncState({"Blo": 1})
+            self.sync_state({"Blo": 1})
         elif state.state == STATE_OFF:
-            self.SyncState({"Blo": 0})
+            self.sync_state({"Blo": 0})
         else:
             _LOGGER.error(
                 "Unable to update from xfan_entity: Invalid state %s", state.state
             )
 
-    # ... Repeat similar pattern for other optional entity callbacks ...
-    # _async_health_entity_state_changed, _async_update_current_health
-    # _async_powersave_entity_state_changed, _async_update_current_powersave (check mode)
-    # _async_sleep_entity_state_changed, _async_update_current_sleep (check mode)
-    # _async_eightdegheat_entity_state_changed, _async_update_current_eightdegheat (check mode)
-    # _async_air_entity_state_changed, _async_update_current_air
-    # _async_anti_direct_blow_entity_state_changed, _async_update_current_anti_direct_blow
-    # _async_light_sensor_entity_state_changed, _async_update_light_sensor (updates internal flag)
+    # ... Repeat similar pattern for other optional entity callbacks:
+    # _async_health_entity_state_changed, _async_update_current_health,
+    # _async_powersave_entity_state_changed, _async_update_current_powersave (check mode),
+    # _async_sleep_entity_state_changed, _async_update_current_sleep (check mode),
+    # _async_eightdegheat_entity_state_changed,
+    #   _async_update_current_eightdegheat (check mode),
+    # _async_air_entity_state_changed, _async_update_current_air,
+    # _async_anti_direct_blow_entity_state_changed,
+    #   _async_update_current_anti_direct_blow,
+    # _async_light_sensor_entity_state_changed,
+    #   _async_update_light_sensor (updates internal flag),
     # _async_auto_light_entity_state_changed, _async_update_auto_light (updates internal flag + sends command)
     # _async_auto_xfan_entity_state_changed, _async_update_auto_xfan (updates internal flag + sends command)
     # _async_target_temp_entity_state_changed, _async_update_current_target_temp
@@ -1485,9 +1540,9 @@ class GreeClimate(ClimateEntity):
         """Update HVAC health based on entity state."""
         _LOGGER.debug("Updating HVAC health state to: %s", state.state)
         if state.state == STATE_ON:
-            self.SyncState({"Health": 1})
+            self.sync_state({"Health": 1})
         elif state.state == STATE_OFF:
-            self.SyncState({"Health": 0})
+            self.sync_state({"Health": 0})
 
     # --- Properties ---
 
@@ -1500,8 +1555,8 @@ class GreeClimate(ClimateEntity):
     @property
     def current_temperature(self) -> Optional[float]:
         """Return the current temperature."""
-        # Value updated by UpdateHACurrentTemperature or _async_update_current_temp
-        _LOGGER.debug("current_temperature(): %s", self._current_temperature)
+        # Value updated by update_ha_current_temperature or _async_update_current_temp
+        # _LOGGER.debug("current_temperature(): %s", self._current_temperature) # Removed diagnostic log
         return self._current_temperature
 
     # Min/Max temp handled by _attr_min_temp, _attr_max_temp
@@ -1509,7 +1564,7 @@ class GreeClimate(ClimateEntity):
     @property
     def target_temperature(self) -> Optional[float]:
         """Return the temperature we try to reach."""
-        # Value updated by UpdateHATargetTemperature
+        # Value updated by update_ha_target_temperature
         _LOGGER.debug("target_temperature(): %s", self._target_temperature)
         return self._target_temperature
 
@@ -1518,7 +1573,7 @@ class GreeClimate(ClimateEntity):
     @property
     def hvac_mode(self) -> HVACMode:
         """Return current operation mode ie. heat, cool, idle."""
-        # Value updated by UpdateHAHvacMode
+        # Value updated by update_ha_hvac_mode
         _LOGGER.debug("hvac_mode(): %s", self._hvac_mode)
         return self._hvac_mode
 
@@ -1527,7 +1582,7 @@ class GreeClimate(ClimateEntity):
     @property
     def fan_mode(self) -> Optional[str]:
         """Return the fan mode."""
-        # Value updated by UpdateHAFanMode
+        # Value updated by update_ha_fan_mode
         _LOGGER.debug("fan_mode(): %s", self._fan_mode)
         return self._fan_mode
 
@@ -1536,7 +1591,7 @@ class GreeClimate(ClimateEntity):
     @property
     def swing_mode(self) -> Optional[str]:
         """Return the swing mode."""
-        # Value updated by UpdateHACurrentSwingMode
+        # Value updated by update_ha_current_swing_mode
         _LOGGER.debug("swing_mode(): %s", self._swing_mode)
         return self._swing_mode
 
@@ -1545,7 +1600,7 @@ class GreeClimate(ClimateEntity):
     @property
     def preset_mode(self) -> Optional[str]:
         """Return the preset mode (horizontal swing)."""
-        # Value updated by UpdateHACurrentPresetMode
+        # Value updated by update_ha_current_preset_mode
         # Returns None if horizontal swing not supported/enabled
         _LOGGER.debug("preset_mode(): %s", self._preset_mode)
         return self._preset_mode if self._horizontal_swing else None
@@ -1559,10 +1614,10 @@ class GreeClimate(ClimateEntity):
         """Return True if the device is available."""
         if self._disable_available_check:
             return True
-        else:
-            is_avail = bool(self._device_online)
-            _LOGGER.debug("available(): %s", is_avail)
-            return is_avail
+        # No else needed after return
+        is_avail = bool(self._device_online)
+        _LOGGER.debug("available(): %s", is_avail)
+        return is_avail
 
     # --- Service Methods ---
 
@@ -1572,12 +1627,12 @@ class GreeClimate(ClimateEntity):
         _LOGGER.debug("set_temperature(): %s", temperature)
         if temperature is not None:
             # Check if device is powered on
-            if self._acOptions.get("Pow") != 0:
+            if self._ac_options.get("Pow") != 0:
                 temp_int = int(temperature)  # Gree uses integer temps
                 if MIN_TEMP <= temp_int <= MAX_TEMP:
-                    _LOGGER.debug("SyncState with SetTem=%d", temp_int)
-                    self.SyncState({"SetTem": temp_int})
-                    # No need to schedule update, SyncState handles it
+                    _LOGGER.debug("sync_state with SetTem=%d", temp_int)
+                    self.sync_state({"SetTem": temp_int})
+                    # No need to schedule update, sync_state handles it
                 else:
                     _LOGGER.warning(
                         "Requested temperature %s is out of range (%d-%d)",
@@ -1593,11 +1648,11 @@ class GreeClimate(ClimateEntity):
     def set_swing_mode(self, swing_mode: str) -> None:
         """Set new target swing operation."""
         _LOGGER.debug("set_swing_mode(): %s", swing_mode)
-        if self._acOptions.get("Pow") != 0:
+        if self._ac_options.get("Pow") != 0:
             if swing_mode in self._attr_swing_modes:
                 swing_index = self._attr_swing_modes.index(swing_mode)
-                _LOGGER.debug("SyncState with SwUpDn=%d", swing_index)
-                self.SyncState({"SwUpDn": swing_index})
+                _LOGGER.debug("sync_state with SwUpDn=%d", swing_index)
+                self.sync_state({"SwUpDn": swing_index})
             else:
                 _LOGGER.error("Invalid swing mode requested: %s", swing_mode)
         else:
@@ -1611,11 +1666,11 @@ class GreeClimate(ClimateEntity):
                 "Horizontal swing (preset mode) is not supported or enabled."
             )
             return
-        if self._acOptions.get("Pow") != 0:
+        if self._ac_options.get("Pow") != 0:
             if self._attr_preset_modes and preset_mode in self._attr_preset_modes:
                 preset_index = self._attr_preset_modes.index(preset_mode)
-                _LOGGER.debug("SyncState with SwingLfRig=%d", preset_index)
-                self.SyncState({"SwingLfRig": preset_index})
+                _LOGGER.debug("sync_state with SwingLfRig=%d", preset_index)
+                self.sync_state({"SwingLfRig": preset_index})
             else:
                 _LOGGER.error("Invalid preset mode requested: %s", preset_mode)
         else:
@@ -1624,7 +1679,7 @@ class GreeClimate(ClimateEntity):
     def set_fan_mode(self, fan_mode: str) -> None:
         """Set new target fan mode."""
         _LOGGER.debug("set_fan_mode(): %s", fan_mode)
-        if self._acOptions.get("Pow") != 0:
+        if self._ac_options.get("Pow") != 0:
             command: Dict[str, int] = {
                 "Tur": 0,
                 "Quiet": 0,
@@ -1645,7 +1700,7 @@ class GreeClimate(ClimateEntity):
                 _LOGGER.error("Invalid fan mode requested: %s", fan_mode)
                 return  # Don't send command if invalid
 
-            self.SyncState(command)
+            self.sync_state(command)
         else:
             _LOGGER.warning("Cannot set fan mode when device is off.")
 
@@ -1676,7 +1731,7 @@ class GreeClimate(ClimateEntity):
                 _LOGGER.error("Invalid HVAC mode requested: %s", hvac_mode)
                 return  # Don't send command if invalid
 
-        self.SyncState(command)
+        self.sync_state(command)
 
     def turn_on(self) -> None:
         """Turn on."""
@@ -1688,7 +1743,7 @@ class GreeClimate(ClimateEntity):
             command["Lig"] = 1
             if self._has_light_sensor and self._enable_light_sensor:
                 command["LigSen"] = 0  # Check actual key name
-        self.SyncState(command)
+        self.sync_state(command)
 
     def turn_off(self) -> None:
         """Turn off."""
@@ -1698,7 +1753,7 @@ class GreeClimate(ClimateEntity):
             command["Lig"] = 0
             if self._has_light_sensor and self._enable_light_sensor:
                 command["LigSen"] = 1  # Check actual key name
-        self.SyncState(command)
+        self.sync_state(command)
 
     # --- HA Lifecycle Methods ---
 
@@ -1720,9 +1775,9 @@ class GreeClimate(ClimateEntity):
         if not self._encryption_key:
             key_retrieved: bool = False
             if self.encryption_version == 1:
-                key_retrieved = self.GetDeviceKey()
+                key_retrieved = self.get_device_key()
             elif self.encryption_version == 2:
-                key_retrieved = self.GetDeviceKeyGCM()
+                key_retrieved = self.get_device_key_gcm()
             else:
                 _LOGGER.error(
                     "Encryption version %s is not implemented for key retrieval.",
@@ -1735,14 +1790,14 @@ class GreeClimate(ClimateEntity):
 
             if not key_retrieved:
                 _LOGGER.warning("Failed to retrieve encryption key during update.")
-                # Device will be marked offline by GetDeviceKey methods
+                # Device will be marked offline by get_device_key methods
                 return  # Stop update if key retrieval failed
-            else:
-                # Key retrieved successfully, proceed to sync state
-                self.SyncState()
+            # No else needed after return
+            # Key retrieved successfully, proceed to sync state
+            self.sync_state()
         else:
             # Key already exists, just sync state
-            self.SyncState()
+            self.sync_state()
 
     # --- Stubs for missing optional entity callbacks ---
 
@@ -1752,7 +1807,7 @@ class GreeClimate(ClimateEntity):
         """Handle powersave entity state changes."""
         # TODO: Implement logic similar to other callbacks
         _LOGGER.debug("Powersave entity changed: %s", event.data.get("new_state"))
-        pass
+        # Removed pass
 
     async def _async_sleep_entity_state_changed(
         self, event: Event[EventStateChangedData]
@@ -1760,7 +1815,7 @@ class GreeClimate(ClimateEntity):
         """Handle sleep entity state changes."""
         # TODO: Implement logic similar to other callbacks
         _LOGGER.debug("Sleep entity changed: %s", event.data.get("new_state"))
-        pass
+        # Removed pass
 
     async def _async_eightdegheat_entity_state_changed(
         self, event: Event[EventStateChangedData]
@@ -1768,7 +1823,7 @@ class GreeClimate(ClimateEntity):
         """Handle 8degheat entity state changes."""
         # TODO: Implement logic similar to other callbacks
         _LOGGER.debug("8degheat entity changed: %s", event.data.get("new_state"))
-        pass
+        # Removed pass
 
     async def _async_air_entity_state_changed(
         self, event: Event[EventStateChangedData]
@@ -1776,7 +1831,7 @@ class GreeClimate(ClimateEntity):
         """Handle air entity state changes."""
         # TODO: Implement logic similar to other callbacks
         _LOGGER.debug("Air entity changed: %s", event.data.get("new_state"))
-        pass
+        # Removed pass
 
     async def _async_anti_direct_blow_entity_state_changed(
         self, event: Event[EventStateChangedData]
@@ -1786,7 +1841,7 @@ class GreeClimate(ClimateEntity):
         _LOGGER.debug(
             "Anti_direct_blow entity changed: %s", event.data.get("new_state")
         )
-        pass
+        # Removed pass
 
     async def _async_light_sensor_entity_state_changed(
         self, event: Event[EventStateChangedData]
@@ -1794,7 +1849,7 @@ class GreeClimate(ClimateEntity):
         """Handle light_sensor entity state changes."""
         # TODO: Implement logic similar to other callbacks
         _LOGGER.debug("Light_sensor entity changed: %s", event.data.get("new_state"))
-        pass
+        # Removed pass
 
     async def _async_auto_light_entity_state_changed(
         self, event: Event[EventStateChangedData]
@@ -1802,7 +1857,7 @@ class GreeClimate(ClimateEntity):
         """Handle auto_light entity state changes."""
         # TODO: Implement logic similar to other callbacks
         _LOGGER.debug("Auto_light entity changed: %s", event.data.get("new_state"))
-        pass
+        # Removed pass
 
     async def _async_auto_xfan_entity_state_changed(
         self, event: Event[EventStateChangedData]
@@ -1810,7 +1865,7 @@ class GreeClimate(ClimateEntity):
         """Handle auto_xfan entity state changes."""
         # TODO: Implement logic similar to other callbacks
         _LOGGER.debug("Auto_xfan entity changed: %s", event.data.get("new_state"))
-        pass
+        # Removed pass
 
     # Add type hints for remaining optional entity callbacks...
     # ... (omitted for brevity, follow pattern of _async_health_entity_state_changed) ...
@@ -1850,7 +1905,7 @@ class GreeClimate(ClimateEntity):
             s_int = int(s_float)  # Gree uses int temps
             _LOGGER.debug("Updating HVAC target temp to: %d", s_int)
             if MIN_TEMP <= s_int <= MAX_TEMP:
-                self.SyncState({"SetTem": s_int})
+                self.sync_state({"SetTem": s_int})
             else:
                 _LOGGER.warning(
                     "Target temp %s from entity is out of range (%d-%d)",
