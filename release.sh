@@ -59,6 +59,18 @@ git fetch --tags origin || print_error "Failed to fetch tags from origin."
 echo "Git status OK."
 echo
 
+# --- Determine Repository ---
+echo "Determining GitHub repository..."
+remote_url=$(git remote get-url origin)
+# Extract owner/repo from URL (handles https and git@ formats)
+repo_full_name=$(echo "$remote_url" | sed -E 's/.*github.com[:\/](.*)\.git/\1/' | sed 's/\/$//')
+if [ -z "$repo_full_name" ] || [[ ! "$repo_full_name" == */* ]]; then
+  print_error "Could not determine GitHub owner/repo from origin URL: $remote_url"
+fi
+echo "Repository found: $repo_full_name"
+echo
+
+
 # --- Determine Latest Tag ---
 echo "Determining latest version tag..."
 latest_tag=$(git tag --sort=-v:refname | grep -E "$TAG_PATTERN" | head -n 1)
@@ -81,7 +93,7 @@ if [ "$dry_run" = true ]; then
   echo "Dry run complete. Would execute the following commands:"
   echo "  git tag \"$new_tag\""
   echo "  git push origin \"$new_tag\""
-  echo "  gh release create \"$new_tag\" --generate-notes --title \"Release $new_tag\" --notes-start-tag \"$latest_tag\""
+  echo "  gh release create \"$new_tag\" -R \"$repo_full_name\" --generate-notes --title \"Release $new_tag\" --notes-start-tag \"$latest_tag\""
   exit 0
 fi
 
@@ -117,7 +129,7 @@ echo "Creating GitHub release for tag '$new_tag'..."
 # Use --generate-notes to automatically create release notes
 # Use --title for a clear release title
 # Use --notes-start-tag to generate notes since the previous release tag
-if release_url=$(gh release create "$new_tag" --generate-notes --title "Release $new_tag" --notes-start-tag "$latest_tag"); then
+if release_url=$(gh release create "$new_tag" -R "$repo_full_name" --generate-notes --title "Release $new_tag" --notes-start-tag "$latest_tag"); then
   echo "Successfully created GitHub release."
   echo "Release URL: $release_url"
 else
@@ -125,7 +137,7 @@ else
   echo "Error: Failed to create GitHub release for tag '$new_tag'." >&2
   echo "The git tag '$new_tag' was pushed, but the GitHub release failed." >&2
   echo "You may need to manually create the release on GitHub or clean up the tag:" >&2
-  echo "  gh release create \"$new_tag\" --generate-notes --title \"Release $new_tag\" --notes-start-tag \"$latest_tag\"" >&2
+  echo "  gh release create \"$new_tag\" -R \"$repo_full_name\" --generate-notes --title \"Release $new_tag\" --notes-start-tag \"$latest_tag\"" >&2
   echo "  OR" >&2
   echo "  git push origin --delete \"$new_tag\" && git tag -d \"$new_tag\"" >&2
   exit 1
