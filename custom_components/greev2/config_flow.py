@@ -4,12 +4,11 @@ import logging
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_MAC
+from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME
 # from homeassistant.core import HomeAssistant # Not needed yet
 
 # Assuming DOMAIN is defined in const.py, otherwise define it here
-# from .const import DOMAIN
-DOMAIN = "greev2" # Define explicitly if not in const yet or to avoid import
+from .const import DOMAIN, DEFAULT_NAME
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +20,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
         vol.Required(CONF_MAC): str,
+        vol.Optional(CONF_NAME, default=DEFAULT_NAME): str, # Add optional Name field
     }
 )
 
@@ -45,18 +45,13 @@ class GreeV2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # For now, just log and re-show form if needed (or proceed if valid)
             _LOGGER.info("GreeV2 Config Flow: User input received (Step 2.1 - no validation yet).")
             # Placeholder for Step 2.2/2.3: Assume success for now to test flow completion
-            # return self.async_create_entry(title=user_input[CONF_HOST], data=user_input)
-            # In a real scenario without validation yet, we'd likely just re-show the form
-            # or potentially error until validation is added. Let's re-show for now.
-            _LOGGER.warning(
-                "Config Flow: Input received but validation/creation not implemented yet."
-            )
-            # To prevent infinite loop in testing, let's just finish with placeholder
-            return self.async_create_entry(title=user_input[CONF_HOST], data=user_input)
+            # Use Name for title if provided, otherwise Host
+            title = user_input.get(CONF_NAME, user_input[CONF_HOST])
+            return self.async_create_entry(title=title, data=user_input)
 
 
         # Show the form to the user
-        _LOGGER.info("GreeV2 Config Flow: Showing user form with IP/MAC fields.")
+        _LOGGER.info("GreeV2 Config Flow: Showing user form with IP/MAC/Name fields.")
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )

@@ -7,7 +7,8 @@
         "description": "Enter the IP address and MAC address of your Gree climate device. Ensure the device is powered on and connected to your network.",
         "data": {
           "host": "IP Address",
-          "mac": "MAC Address"
+          "mac": "MAC Address",
+          "name": "Name"
         }
       }
     },
