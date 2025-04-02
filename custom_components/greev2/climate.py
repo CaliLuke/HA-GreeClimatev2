@@ -42,7 +42,8 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.device_registry import format_mac
+# Import format_mac and DeviceInfo
+from homeassistant.helpers.device_registry import format_mac, DeviceInfo
 
 
 # Local imports
@@ -67,6 +68,7 @@ from .const import (
     MAX_TEMP,
     SUPPORT_FLAGS,
     TEMP_OFFSET, # Keep if used in update_ha_current_temperature
+    DOMAIN, # Import DOMAIN for device info
 )
 
 
@@ -116,6 +118,7 @@ class GreeClimate(ClimateEntity):
     _attr_min_temp: float = float(MIN_TEMP)
     _attr_max_temp: float = float(MAX_TEMP)
     _attr_supported_features: ClimateEntityFeature = SUPPORT_FLAGS  # Base flags
+    _attr_device_info: DeviceInfo # Added for area support
 
     # Internal state
     _ip_addr: str
@@ -133,19 +136,13 @@ class GreeClimate(ClimateEntity):
     _swing_mode: Optional[str] = None
     _preset_mode: Optional[str] = None
 
-    # Optional entity IDs are no longer configured via YAML/init
-    # These might be reintroduced later via Options Flow if needed
-    # _temp_sensor_entity_id: Optional[str] = None
-    # _lights_entity_id: Optional[str] = None
-    # ... etc ...
-
     _horizontal_swing: bool
     _has_temp_sensor: Optional[bool] = None
     _has_anti_direct_blow: Optional[bool] = None
     _has_light_sensor: Optional[bool] = None
 
     _current_temperature: Optional[float] = None
-    _current_lights: Optional[str] = None  # STATE_ON/STATE_OFF/STATE_UNKNOWN
+    _current_lights: Optional[str] = None
     _current_xfan: Optional[str] = None
     _current_health: Optional[str] = None
     _current_powersave: Optional[str] = None
@@ -155,37 +152,33 @@ class GreeClimate(ClimateEntity):
     _current_anti_direct_blow: Optional[str] = None
 
     _first_time_run: bool = True
-    # Flags previously controlled by optional entities - manage via Options Flow later?
     _enable_light_sensor: bool = False
     _auto_light: bool = False
     _auto_xfan: bool = False
 
     encryption_version: int
-    _encryption_key: Optional[bytes] = None # Key is retrieved during bind
-    _uid: int = 0 # UID not used in config flow setup
+    _encryption_key: Optional[bytes] = None
+    _uid: int = 0
     _api: GreeDeviceApi
-    # CIPHER is deprecated, managed by _api
 
-    # Type hint for _ac_options - values seem to be mostly int/None
     _ac_options: Dict[str, Optional[int]]
     _options_to_fetch: List[str]
-    _preset_modes_list: List[str]  # Added for storing original list
+    _preset_modes_list: List[str]
 
-    # Deprecated, remove if not used by HA core anymore
     _enable_turn_on_off_backwards_compatibility: bool = False
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the Gree Climate device from a config entry."""
         _LOGGER.info("Initialize the GREE climate device from config entry: %s", entry.entry_id)
         self.hass = hass
-        self._entry = entry # Store entry for potential future use (e.g., options flow)
+        self._entry = entry
 
         # --- Extract data from ConfigEntry ---
         data = entry.data
         self._attr_name = data.get(CONF_NAME, DEFAULT_NAME)
-        self._ip_addr = data[CONF_HOST] # Required field in config flow
-        self._mac_addr = format_mac(data[CONF_MAC]) # Required, format it
-        # Get encryption version, default to 2 if missing (should be present from config flow)
+        self._ip_addr = data[CONF_HOST]
+        self._mac_addr = format_mac(data[CONF_MAC])
+        area_id = data.get("area_id") # Extract area_id
         try:
             self.encryption_version = int(data.get(CONF_ENCRYPTION_VERSION, "2"))
         except (ValueError, TypeError):
@@ -193,11 +186,9 @@ class GreeClimate(ClimateEntity):
             self.encryption_version = 2
 
         # --- Use Defaults for other parameters ---
-        # TODO: Consider making these configurable via Options Flow later
         self._port = DEFAULT_PORT
         self._timeout = DEFAULT_TIMEOUT
         self._attr_target_temperature_step = DEFAULT_TARGET_TEMP_STEP
-        # Use corrected constant names for modes/settings
         self._attr_hvac_modes = HVAC_MODES
         self._attr_fan_modes = FAN_MODES
         self._attr_swing_modes = SWING_MODES
@@ -207,7 +198,7 @@ class GreeClimate(ClimateEntity):
         self._max_online_attempts = DEFAULT_MAX_ONLINE_ATTEMPTS
 
         # --- Set initial internal state ---
-        self._attr_unique_id = entry.unique_id or f"climate.gree_{self._mac_addr}" # Use entry unique_id if available
+        self._attr_unique_id = entry.unique_id or f"climate.gree_{self._mac_addr}"
         self._device_online = None
         self._online_attempts = 0
         self._target_temperature = None
@@ -228,7 +219,7 @@ class GreeClimate(ClimateEntity):
         self._current_air = None
         self._current_anti_direct_blow = None
         self._first_time_run = True
-        self._encryption_key = None # Key will be obtained during bind
+        self._encryption_key = None
 
         # --- Configure Preset Modes based on horizontal swing ---
         if self._horizontal_swing:
@@ -237,14 +228,24 @@ class GreeClimate(ClimateEntity):
         else:
             self._attr_preset_modes = None
 
+        # --- Set Device Info ---
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._mac_addr)}, # Use MAC as unique identifier within domain
+            name=self._attr_name,
+            manufacturer="Gree",
+            # model="Device Model", # TODO: Can we get model info?
+            # sw_version="Device SW", # TODO: Can we get sw version?
+            suggested_area=area_id, # Assign area_id here
+            configuration_url=f"http://{self._ip_addr}", # Basic URL, might not work
+        )
+
         # --- Instantiate the API handler ---
-        # Key is not passed here; it will be obtained during the first update/bind
         self._api = GreeDeviceApi(
             host=self._ip_addr,
             port=self._port,
             mac=self._mac_addr,
             timeout=self._timeout,
-            encryption_key=None, # Key obtained via bind_and_get_key
+            encryption_key=None,
             encryption_version=self.encryption_version,
         )
 
@@ -254,7 +255,6 @@ class GreeClimate(ClimateEntity):
             "Blo": None, "Health": None, "SwhSlp": None, "Lig": None, "SwingLfRig": None,
             "SwUpDn": None, "Quiet": None, "Tur": None, "StHt": None, "TemUn": None,
             "HeatCoolType": None, "TemRec": None, "SvSt": None, "SlpMod": None,
-            # Add optional keys that might be fetched later
             "TemSen": None, "AntiDirectBlow": None, "LigSen": None,
         }
         self._options_to_fetch = [
@@ -263,23 +263,20 @@ class GreeClimate(ClimateEntity):
             "TemRec", "SvSt", "SlpMod",
         ]
 
-        # State change listener setup removed - handled by Options Flow if needed
-
     def set_ac_options(
         self,
         ac_options: Dict[str, Optional[int]],
         new_options_to_override: Union[
             List[str], Dict[str, Any]
-        ],  # Can be list or dict
+        ],
         option_values_to_override: Optional[
             List[Any]
-        ] = None,  # Should be List if new_options_to_override is List
+        ] = None,
     ) -> Dict[str, Optional[int]]:
         """Update the internal _ac_options dictionary."""
         if option_values_to_override is not None and isinstance(
             new_options_to_override, list
         ):
-            # _LOGGER.debug("Setting ac_options with retrieved HVAC values") # Reduce noise
             if len(new_options_to_override) != len(option_values_to_override):
                 _LOGGER.error("set_ac_options error: Mismatched lengths for keys (%d) and values (%d)", len(new_options_to_override), len(option_values_to_override))
             else:
@@ -290,13 +287,11 @@ class GreeClimate(ClimateEntity):
                         _LOGGER.warning("Could not convert value '%s' to int for key '%s'. Storing as None.", value, key)
                         ac_options[key] = None
         elif isinstance(new_options_to_override, dict):
-            # _LOGGER.debug("Overwriting ac_options with new settings") # Reduce noise
             for key, value in new_options_to_override.items():
                 try: ac_options[key] = int(value) if value is not None else None
                 except (ValueError, TypeError):
                     _LOGGER.warning("Could not convert value '%s' to int for key '%s'. Storing as None.", value, key)
                     ac_options[key] = None
-                # _LOGGER.debug("Overwriting %s: %s", key, ac_options[key]) # Reduce noise
         else: _LOGGER.error("Invalid arguments passed to set_ac_options.")
         return ac_options
 

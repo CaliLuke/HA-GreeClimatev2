@@ -121,8 +121,8 @@ async def gree_climate_device(mock_hass: HomeAssistant) -> GreeClimateFactory:
             mock_api_instance._encryption_version = encryption_version
             # Explicitly set the encryption key to None initially
             mock_api_instance._encryption_key = None
-            # Explicitly set the cipher to None initially
-            mock_api_instance._cipher = None
+            # Explicitly configure the _cipher attribute to be None
+            mock_api_instance.configure_mock(_cipher=None)
 
             device = GreeClimate(hass=mock_hass, entry=mock_entry)
             # Assign the mock API instance to the device for inspection if needed

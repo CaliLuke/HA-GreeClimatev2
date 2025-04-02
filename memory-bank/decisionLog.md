@@ -258,6 +258,44 @@ This file records architectural and implementation decisions using a list format
 *   Committed changes including test fixes (`test_update.py`), `mypy` fix (`climate.py`), `pylint` fix (`device_api.py`), and added untracked files (`const.py`, `refactor_plan_incremental.md`).
 *   Ran `./release.sh` script.
 *   Script successfully identified `2.14.22` as latest, calculated `2.14.23` as next.
+
+---
+
+## Decision
+
+*   [2025-04-01 22:17:45] Fix bug in `device_api.get_status` response handling.
+
+## Rationale
+
+*   User testing of release 2.14.23 revealed logs showing the `dat` field in the status response was a list, not a dictionary as previously assumed based on test mocks.
+*   The `get_status` method was incorrectly trying to process this list as a dictionary, causing it to return `None` and the device to appear offline.
+
+## Implementation Details
+
+*   Modified `get_status` in `custom_components/greev2/device_api.py`.
+*   The code now checks if `received_json_pack['dat']` is a list.
+*   If it's a list and its length matches the requested `property_names`, the list is returned directly.
+*   Error handling added for missing `dat` field or if `dat` is not a list.
+*   Improved the related test `test_update_gcm_key_retrieval_and_update` in `tests/test_update.py` to mock the correct list-based response structure and add assertions for state validation.
+
+---
+
+## Decision
+
+*   [2025-04-01 22:21:07] Create release 2.14.24.
+
+## Rationale
+
+*   A bug was found and fixed after creating release 2.14.23. A new release is needed for user testing.
+
+## Implementation Details
+
+*   Committed the API fix and test improvement.
+*   Ran `./release.sh` script.
+*   Script successfully identified `2.14.23` as latest, calculated `2.14.24` as next.
+*   User confirmed.
+*   Script created and pushed tag `2.14.24`.
+*   Script created GitHub release for `2.14.24` with auto-generated notes.
 *   User confirmed.
 *   Script created and pushed tag `2.14.23`.
 *   Script created GitHub release for `2.14.23` with auto-generated notes.
