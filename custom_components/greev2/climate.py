@@ -4,8 +4,8 @@
 import logging
 import socket  # Keep socket
 
-# Need Optional for type hints, Union for set_ac_options
-from typing import Any, Dict, List, Optional, Union
+# Need Optional for type hints
+from typing import Any, Dict, List, Optional # Removed Union
 
 # Third-party imports
 # import voluptuous as vol # Unused
@@ -29,8 +29,8 @@ from homeassistant.const import (
     CONF_NAME,
     # CONF_PORT, # Unused
     # CONF_TIMEOUT, # Unused
-    STATE_OFF,
-    STATE_ON,
+    # STATE_OFF, # Removed
+    # STATE_ON, # Removed
     STATE_UNKNOWN,
     UnitOfTemperature,
 )
@@ -72,7 +72,7 @@ from .const import (
     MIN_TEMP,
     MAX_TEMP,
     SUPPORT_FLAGS,
-    TEMP_OFFSET,  # Keep if used in update_ha_current_temperature
+    # TEMP_OFFSET, # Removed
     DOMAIN,  # Import DOMAIN for device info
 )
 
@@ -172,13 +172,22 @@ class GreeClimate(ClimateEntity):
         self._entry = entry
 
         # --- Extract data from ConfigEntry ---
-        data = entry.data
-        self._attr_name = data.get(CONF_NAME, DEFAULT_NAME)
-        self._ip_addr = data[CONF_HOST]
+        options = entry.options  # Get options dictionary
+        data = entry.data  # Get original data dictionary
+
+        # Prioritize options, then data, then default for name
+        self._attr_name = options.get(CONF_NAME, data.get(CONF_NAME, DEFAULT_NAME))
+        # Prioritize options, then data for host (required)
+        self._ip_addr = options.get(CONF_HOST, data[CONF_HOST])
+        # Prioritize options, then data for area_id
+        area_id = options.get("area_id", data.get("area_id"))
+        # Prioritize options, then data for temp sensor
+        self._temp_sensor_entity_id = options.get(
+            CONF_TEMP_SENSOR, data.get(CONF_TEMP_SENSOR)
+        )
+
+        # MAC and Encryption Version should only come from original data, not options
         self._mac_addr = format_mac(data[CONF_MAC])
-        area_id = data.get("area_id")
-        # Extract optional temp sensor entity ID
-        self._temp_sensor_entity_id = data.get(CONF_TEMP_SENSOR)
         try:
             self.encryption_version = int(data.get(CONF_ENCRYPTION_VERSION, "2"))
         except (ValueError, TypeError):

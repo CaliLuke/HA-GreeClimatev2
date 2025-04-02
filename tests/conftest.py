@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, AsyncGenerator, Awaitable, Callable, Generator, Optional
+from typing import Any, Callable, Optional, AsyncGenerator # Re-added AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,18 +17,18 @@ from homeassistant.components.climate import ClimateEntityFeature
 from custom_components.greev2.climate import GreeClimate
 from custom_components.greev2.const import (
     DEFAULT_PORT,
-    DEFAULT_TARGET_TEMP_STEP,  # Keep if needed elsewhere, but not for fixture
-    DEFAULT_TIMEOUT,  # Keep if needed elsewhere, but not for fixture
-    FAN_MODES,  # Keep if needed elsewhere, but not for fixture
-    HVAC_MODES,  # Keep if needed elsewhere, but not for fixture
-    PRESET_MODES,  # Keep if needed elsewhere, but not for fixture
-    SWING_MODES,  # Keep if needed elsewhere, but not for fixture
+    # DEFAULT_TARGET_TEMP_STEP, # Removed unused
+    # DEFAULT_TIMEOUT, # Removed unused
+    # FAN_MODES, # Removed unused
+    # HVAC_MODES, # Removed unused
+    # PRESET_MODES, # Removed unused
+    # SWING_MODES, # Removed unused
     # Import constants needed for mock config entry data
     CONF_HOST,
     CONF_MAC,
     CONF_NAME,
     CONF_ENCRYPTION_VERSION,
-    DEFAULT_HORIZONTAL_SWING,  # Import default
+    # DEFAULT_HORIZONTAL_SWING, # Removed unused
 )
 
 # --- Global Mocks ---

@@ -299,3 +299,201 @@ This file records architectural and implementation decisions using a list format
 *   User confirmed.
 *   Script created and pushed tag `2.14.23`.
 *   Script created GitHub release for `2.14.23` with auto-generated notes.
+---
+
+## Decision
+
+*   [2025-04-02 00:11] Refactor `climate.py` (`__init__`, `async_setup_entry`) for ConfigEntry integration (Phase 3).
+
+## Rationale
+
+*   Required step to complete the transition from YAML configuration to UI-based config flow.
+
+## Implementation Details
+
+*   Modified `GreeClimate.__init__` to accept `ConfigEntry`.
+*   Extracted configuration from `entry.data` using defaults from `const.py`.
+*   Removed optional entity ID parameters and state change listener setup from `__init__`.
+*   Updated `climate.async_setup_entry` to instantiate `GreeClimate` using the entry and call `async_add_entities`.
+
+---
+
+## Decision
+
+*   [2025-04-02 00:15] Fix resulting test failures iteratively after Config Flow refactoring. [Summarized 2025-04-02 03:12]
+
+## Rationale
+
+*   Address errors systematically after major code changes related to Config Flow.
+
+## Implementation Details
+
+*   Addressed various `mypy` errors, `TypeError`s, `InvalidSpecError`, `AssertionError`s, and `AttributeError`s across test files (`test_update.py`, `conftest.py`, `config_flow.py`, `test_init.py`) and `device_api.py` by updating fixtures, mocks, test calls, and fixing async mismatches.
+
+---
+
+## Decision
+
+*   [2025-04-02 00:37] Create release 2.14.34 (Config Flow implementation).
+
+## Rationale
+
+*   Completed Config Flow implementation (Phases 1-3) and fixed resulting test failures. Ready for release.
+
+## Implementation Details
+
+*   Committed changes related to Config Flow implementation and test fixes.
+*   Ran `./release.sh` script.
+*   Script successfully identified `2.14.24` as latest, calculated `2.14.34` as next.
+*   User confirmed.
+*   Script created and pushed tag `2.14.34`.
+*   Script created GitHub release for `2.14.34` with auto-generated notes.
+
+---
+
+## Decision
+
+*   [2025-04-02 00:44] Fix Area/Zone not persisting from config flow.
+
+## Rationale
+
+*   User feedback indicated the selected Area was not being applied to the device.
+
+## Implementation Details
+
+*   Updated `climate.py.__init__` to extract `area_id` from `entry.data`.
+*   Added `DeviceInfo` import and set `_attr_device_info` with `suggested_area=area_id`.
+
+---
+
+## Decision
+
+*   [2025-04-02 00:59] Add optional external temperature sensor selector to config flow UI.
+
+## Rationale
+
+*   User request to allow specifying an external sensor during setup.
+
+## Implementation Details
+
+*   Added `CONF_TEMP_SENSOR` constant.
+*   Added `EntitySelector` for temperature sensors to `config_flow.py` schema.
+*   Updated `climate.py` to extract the sensor ID, re-add state listener setup in `async_added_to_hass`, and re-implement sensor update callbacks.
+
+---
+
+## Decision
+
+*   [2025-04-02 01:05] Create release 2.14.35 (Config Flow fixes/enhancements).
+
+## Rationale
+
+*   Implemented fixes for Area persistence and added the external temperature sensor selector to the Config Flow. Ready for release.
+
+## Implementation Details
+
+*   Committed changes related to Area fix and temp sensor selector.
+*   Ran `./release.sh` script.
+*   Script successfully identified `2.14.34` as latest, calculated `2.14.35` as next.
+*   User confirmed.
+*   Script created and pushed tag `2.14.35`.
+*   Script created GitHub release for `2.14.35` with auto-generated notes.
+
+---
+
+## Decision
+
+*   [2025-04-02 01:07] Create dedicated unit tests for `GreeDeviceApi`.
+
+## Rationale
+
+*   Improve test suite robustness by directly testing the API communication layer, reducing reliance on mocking within higher-level tests.
+
+## Implementation Details
+
+*   Created `tests/test_device_api.py`.
+*   Implemented initial tests for `__init__` (V1/V2) and `bind_and_get_key` (V1/V2 success, failure scenarios).
+
+---
+
+## Decision
+
+*   [2025-04-02 02:27] Refactor `device_api.py` methods to async and update tests.
+
+## Rationale
+
+*   Align API communication with Home Assistant's async architecture.
+*   Address `RuntimeWarning`s related to unawaited coroutines in tests.
+*   Improve test structure and maintainability.
+
+## Implementation Details
+
+*   Converted `bind_and_get_key`, `_bind_and_get_key_v1`, `_bind_and_get_key_v2`, `_fetch_result`, `send_command`, `get_status` in `device_api.py` to `async def`.
+*   Updated calls within `device_api.py` and `climate.py` (`_async_sync_state`, `_async_update_internal`) to use `await`.
+*   Refactored `tests/test_device_api.py` into separate files (`test_init.py`, `test_bind.py`, `test_get_status.py`, `test_send_command.py`) within a new `tests/device_api/` directory.
+*   Updated all API tests to use `async def` and `await`, replacing `MagicMock` with `AsyncMock` where appropriate for patched async methods.
+*   Fixed `RuntimeWarning`s by ensuring `AsyncMock` side effects were awaited or handled correctly.
+*   Ran `pytest` and confirmed all tests passed.
+
+---
+
+## Decision
+
+*   [2025-04-02 02:53] Refactor `climate.py` state management and feature detection into `climate_helpers.py`.
+
+## Rationale
+
+*   Reduce complexity and size of `GreeClimate` class in `climate.py`.
+*   Improve maintainability and testability by separating concerns.
+*   Followed the plan outlined in `memory-bank/climate_refactor_plan.md`.
+
+## Implementation Details
+
+*   Created `custom_components/greev2/climate_helpers.py`.
+*   Implemented `GreeClimateState` class to manage `_ac_options` and provide state properties.
+*   Implemented async `detect_features` function to handle feature discovery.
+*   Refactored `GreeClimate.__init__` to initialize and use `GreeClimateState`.
+*   Refactored `GreeClimate._async_sync_state` to use `detect_features` and `GreeClimateState.update_options`.
+*   Refactored `GreeClimate` properties (`hvac_mode`, `target_temperature`, etc.) to delegate to `GreeClimateState`.
+*   Removed obsolete methods (`set_ac_options`, `update_ha_*`) from `GreeClimate`.
+*   Created `tests/test_climate_helpers.py` with unit tests for the new helper module.
+*   Adapted existing tests (`test_properties.py`, `test_update.py`, `tests/commands/test_commands.py`) to the refactored structure.
+*   Fixed test failures related to the refactoring.
+
+---
+
+## Decision
+
+*   [2025-04-02 03:38] Refactor config flow to be dynamic based on device model selection using JSON configuration files.
+
+## Rationale
+
+*   Simplify user setup by guiding model selection first.
+*   Reduce binding errors by using known-correct parameters (especially encryption version) from model-specific JSON files.
+*   Handle device variations more robustly and enable features based on device capabilities defined in JSON.
+*   Address user reports of binding timeouts and inflexible configuration.
+
+## Implementation Details
+
+*   Detailed plan saved in `memory-bank/dynamic_config_flow_plan.md`.
+*   Involves creating `devices/` directory with JSON configs, modifying `config_flow.py` for multi-step flow, updating `climate.py` to load/use configs, and updating tests/docs.
+---
+
+## Decision
+
+*   [2025-04-02 11:42] Define standard release workflow using `prerelease.sh` and `release.sh`.
+
+## Rationale
+
+*   To establish a clear, consistent, and semi-automated process for preparing and executing releases, separating preparation from the final tagging/release action and allowing for manual review and commit message crafting.
+
+## Implementation Details
+
+*   **Workflow:**
+    1.  **Run `./prerelease.sh`:** Calculates next version, updates `manifest.json`, stashes `memory-bank/`, lists changed files. Provides instructions for Roo.
+    2.  **Roo (AI): Formulate Commit Message:** Reviews file list, formulates commit message (title & body). Presents message to User.
+    3.  **User: Approve Commit Message:** Reviews message presented by Roo.
+    4.  **Roo (AI): Save Commit Message:** Saves approved message to `commit_msg.txt` in project root.
+    5.  **Run `./release.sh --commit-message-file commit_msg.txt`:** Script automatically handles `git add .`, `git commit --file=commit_msg.txt`, `git push`, cleanup of `commit_msg.txt`, tagging, and GitHub release creation (prompting user only before tagging/releasing).
+*   `prerelease.sh`: Handles preparation (version, manifest, stash, list files). Requires manual execution. Dry run available (`--dry-run`).
+*   `release.sh`: Handles commit, push, tag, GitHub release. Requires `--commit-message-file` argument pointing to the message file created by Roo after approval. Dry run available (`--dry-run`).

@@ -1,7 +1,7 @@
 # pylint: disable=protected-access
 """Tests for the GreeDeviceApi __init__ method."""
 
-import pytest  # pytest is implicitly used by the test runner
+# import pytest  # Removed unused import
 
 # Import the class to test
 from custom_components.greev2.device_api import GreeDeviceApi

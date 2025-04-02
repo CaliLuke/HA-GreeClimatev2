@@ -33,8 +33,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # The climate platform will then call async_setup_entry within its code.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # TODO: Add update listener for options flow if/when implemented
-    # entry.async_on_unload(entry.add_update_listener(update_listener))
+    # Add update listener for options flow
+    entry.add_update_listener(async_update_options)
 
     _LOGGER.debug("Finished setting up Gree Climate V2 entry: %s", entry.entry_id)
     return True
@@ -56,9 +56,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-# Optional: If options flow is implemented later
-# async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-#     """Handle options update."""
-#     _LOGGER.debug("Handling options update for %s", entry.entry_id)
-#     # Reload the entry to apply changes.
-#     await hass.config_entries.async_reload(entry.entry_id)
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update."""
+    _LOGGER.debug("Handling options update for %s", entry.entry_id)
+    # Reload the entry to apply changes.
+    await hass.config_entries.async_reload(entry.entry_id)

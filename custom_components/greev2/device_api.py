@@ -14,14 +14,16 @@ from Crypto.Cipher import AES
 # Home Assistant imports
 from homeassistant.components.climate import HVACMode  # Corrected import path
 
+# Local imports
+from . import const # Moved import to top
+
 # Simplify CipherType to Any for broader compatibility, or use specific types
 # from Crypto.Cipher.AES import AESCipher # Example if using specific type
 CipherType = Any
 
 _LOGGER = logging.getLogger(__name__)
 
-# Import constants
-from . import const
+# Import constants - Removed from here
 
 
 class GreeDeviceApi:
@@ -111,7 +113,15 @@ class GreeDeviceApi:
             _LOGGER.info("V1 (ECB) binding successful. Key: %s", self._encryption_key)
             return True
         # FIX: Catch more specific exceptions
-        except (socket.timeout, socket.error, ConnectionError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+        except (
+            socket.timeout,
+            socket.error,
+            ConnectionError,
+            json.JSONDecodeError,
+            KeyError,
+            ValueError,
+            TypeError,
+        ) as e:
             _LOGGER.error("Error during V1 (ECB) binding! Error: %s", e, exc_info=True)
             self._is_bound = False
             return False
@@ -152,7 +162,15 @@ class GreeDeviceApi:
             _LOGGER.info("V2 (GCM) binding successful. Key: %s", self._encryption_key)
             return True
         # FIX: Catch more specific exceptions
-        except (socket.timeout, socket.error, ConnectionError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+        except (
+            socket.timeout,
+            socket.error,
+            ConnectionError,
+            json.JSONDecodeError,
+            KeyError,
+            ValueError,
+            TypeError,
+        ) as e:
             _LOGGER.error("Error during V2 (GCM) binding! Error: %s", e, exc_info=True)
             self._is_bound = False
             return False
@@ -416,10 +434,19 @@ class GreeDeviceApi:
             )
             _LOGGER.debug("Received response pack: %s", received_json_pack)
             return received_json_pack
-        except (socket.timeout, socket.error, ConnectionError) as e: # FIX: Catch specific socket/connection errors
+        except (
+            socket.timeout,
+            socket.error,
+            ConnectionError,
+        ) as e:  # FIX: Catch specific socket/connection errors
             _LOGGER.error("Socket/Connection error sending command: %s", e)
             return None
-        except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e: # FIX: Catch specific data processing errors
+        except (
+            json.JSONDecodeError,
+            ValueError,
+            KeyError,
+            TypeError,
+        ) as e:  # FIX: Catch specific data processing errors
             _LOGGER.error("Error processing response after sending command: %s", e)
             return None
         # FIX: Removed broad Exception catch
@@ -528,10 +555,19 @@ class GreeDeviceApi:
                     received_json_pack["dat"],
                 )
                 return None
-        except (socket.timeout, socket.error, ConnectionError) as e: # FIX: Catch specific socket/connection errors
+        except (
+            socket.timeout,
+            socket.error,
+            ConnectionError,
+        ) as e:  # FIX: Catch specific socket/connection errors
             _LOGGER.error("Socket/Connection error getting status: %s", e)
             return None
-        except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e: # FIX: Catch specific data processing errors
+        except (
+            json.JSONDecodeError,
+            ValueError,
+            KeyError,
+            TypeError,
+        ) as e:  # FIX: Catch specific data processing errors
             _LOGGER.error("Error processing response after getting status: %s", e)
             return None
         # FIX: Removed broad Exception catch

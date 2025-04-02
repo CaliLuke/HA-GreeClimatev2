@@ -134,13 +134,23 @@ async def test_api_bind_and_get_key_failure(failure_mode: Exception) -> None:
             mock_fetch_result.side_effect = failure_mode
 
         # Act & Assert
-        if isinstance(failure_mode, (socket.timeout, ConnectionError, ValueError, KeyError, TypeError, json.JSONDecodeError)):
+        if isinstance(
+            failure_mode,
+            (
+                socket.timeout,
+                ConnectionError,
+                ValueError,
+                KeyError,
+                TypeError,
+                json.JSONDecodeError,
+            ),
+        ):
             # These specific exceptions should be caught and return False
             result = await api.bind_and_get_key()
             assert not result
             assert not api._is_bound
-            assert api._encryption_key is None # Ensure key not set on failure
-            assert api._cipher is None # Ensure cipher not set on failure
+            assert api._encryption_key is None  # Ensure key not set on failure
+            assert api._cipher is None  # Ensure cipher not set on failure
             mock_fetch_result.assert_awaited_once()
         else:
             # Generic Exception should propagate

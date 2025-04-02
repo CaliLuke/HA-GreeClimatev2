@@ -226,7 +226,20 @@ async def test_api_get_status_failure(
             status_result = await api.get_status(properties_to_get)
             assert status_result is None
             mock_fetch_result.assert_not_awaited()
-        elif isinstance(failure_mode, (socket.timeout, ConnectionError, ValueError, json.JSONDecodeError, KeyError, TypeError)) or mock_return is not None:
+        elif (
+            isinstance(
+                failure_mode,
+                (
+                    socket.timeout,
+                    ConnectionError,
+                    ValueError,
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                ),
+            )
+            or mock_return is not None
+        ):
             # Specific exceptions or bad return data should be caught and return None
             status_result = await api.get_status(properties_to_get)
             assert status_result is None

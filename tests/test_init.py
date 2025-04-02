@@ -1,12 +1,12 @@
-import json
-from typing import Any, Dict
+# import json # Removed unused
+# from typing import Any, Dict # Removed unused
 from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.components.climate import HVACMode
 from homeassistant.core import HomeAssistant
 
-from custom_components.greev2.const import GCM_DEFAULT_KEY  # Import from const
+# from custom_components.greev2.const import GCM_DEFAULT_KEY  # Removed unused import
 
 # Import MOCK constants from conftest using absolute path relative to tests dir
 # No longer needed if using fixtures properly

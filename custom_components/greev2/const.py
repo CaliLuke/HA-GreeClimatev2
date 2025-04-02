@@ -4,9 +4,10 @@ from datetime import timedelta
 from typing import List
 
 from homeassistant.components.climate import ClimateEntityFeature, HVACMode
-from homeassistant.const import (
-    UnitOfTemperature,
-)  # Needed for type hints if used, but not directly used here yet
+# Removed unused UnitOfTemperature import
+# from homeassistant.const import (
+#     UnitOfTemperature,
+# )
 
 DOMAIN = "greev2"
 
@@ -31,6 +32,7 @@ CONF_HOST: str = "host"
 CONF_PORT: str = "port"
 CONF_TEMP_SENSOR: str = "temp_sensor"
 
+CONF_DEVICE_MODEL: str = "device_model"
 CONF_MAC: str = "mac"
 CONF_TIMEOUT: str = "timeout"
 

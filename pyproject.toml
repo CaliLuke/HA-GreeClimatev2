@@ -3,7 +3,7 @@ name = "ha-greeclimatev2"
 version = "0.1.0" # Placeholder version, can be updated later
 description = "Home Assistant Custom Component for Gree Climate V2"
 readme = "README.md"
-license = "LICENSE"
+license = { file = "LICENSE" }
 requires-python = ">=3.13" # Based on the recreated environment
 
 # Add core dependencies if any are needed outside of testing
@@ -13,7 +13,7 @@ requires-python = ">=3.13" # Based on the recreated environment
 
 [project.optional-dependencies]
 test = [
-    "pytest",
+    "pytest>=8.0",
     "pytest-asyncio",
     "pytest-cov",
     "simplejson",
@@ -22,7 +22,8 @@ test = [
     "black",
     "mypy",
     "pylint", # Added pylint
-    "pytest-homeassistant-custom-component",
+    "pytest-homeassistant-custom-component>=0.13",
+    "pytest-timeout>=1.4.2",
 ]
 
 # Optional: Build system configuration if packaging

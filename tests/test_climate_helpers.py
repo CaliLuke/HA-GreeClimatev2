@@ -1,8 +1,8 @@
 """Unit tests for climate_helpers.py."""
 
 import socket
-from typing import Any, Dict, List, Optional
-from unittest.mock import AsyncMock, patch
+from typing import Dict, Optional # Removed Any, List
+from unittest.mock import AsyncMock # Removed patch
 import pytest
 
 from homeassistant.components.climate import HVACMode
@@ -12,11 +12,11 @@ from homeassistant.const import STATE_ON, STATE_OFF, STATE_UNKNOWN
 
 # Assuming consts are accessible or mocked if needed
 from custom_components.greev2.const import (
-    HVAC_MODES,
+    # HVAC_MODES, # Removed unused
     FAN_MODES,
     SWING_MODES,
     PRESET_MODES,
-    TEMP_OFFSET,  # Added TEMP_OFFSET
+    # TEMP_OFFSET, # Removed unused
 )
 
 # Import detect_features and GreeDeviceApi for testing

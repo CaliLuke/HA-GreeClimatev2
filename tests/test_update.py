@@ -1,20 +1,21 @@
-import json
-import socket  # Import socket for error simulation
-from typing import Any, Dict, List, Optional
-from unittest.mock import ANY, MagicMock, call, patch, AsyncMock  # Import patch
+# import json # Removed unused
+# import socket  # Removed unused
+from typing import Any, Dict, List # Removed Optional
+from unittest.mock import ANY, MagicMock, patch, AsyncMock  # Removed call
 
-import pytest
+# import pytest # Removed unused
 from _pytest.logging import LogCaptureFixture
 from homeassistant.components.climate import HVACMode
-from homeassistant.const import STATE_ON, UnitOfTemperature, ATTR_UNIT_OF_MEASUREMENT
+# Removed unused UnitOfTemperature, ATTR_UNIT_OF_MEASUREMENT
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import Entity
-from unittest.mock import Mock
+# from homeassistant.helpers.entity import Entity # Removed unused
+# from unittest.mock import Mock # Removed unused
 
 from custom_components.greev2.climate import GreeClimate
 
 # Import detect_features for patching
-from custom_components.greev2.climate_helpers import detect_features
+# from custom_components.greev2.climate_helpers import detect_features # Removed unused
 from custom_components.greev2.const import FAN_MODES, SWING_MODES
 
 # Import type alias from conftest
@@ -32,7 +33,7 @@ from .conftest import GreeClimateFactory
 async def test_update_calls_get_values(
     mock_detect_features: AsyncMock,  # Add mock arg
     gree_climate_device: GreeClimateFactory,
-    mock_hass: HomeAssistant,
+    mock_hass: HomeAssistant, # Keep mock_hass even if unused by test logic, fixture might need it
 ) -> None:
     """Test update correctly calls get_status on the API object."""
     device: GreeClimate = gree_climate_device()
@@ -46,9 +47,9 @@ async def test_update_calls_get_values(
 
     # Configure the mock API return value via the device's API instance
     mock_status_list: List[Any] = [0 for _ in initial_options]
-    device._api.get_status = AsyncMock(return_value=mock_status_list) # type: ignore[method-assign]
+    device._api.get_status = AsyncMock(return_value=mock_status_list)  # type: ignore[method-assign]
     device._api._is_bound = True
-    device._api.bind_and_get_key = AsyncMock(return_value=True) # type: ignore[method-assign]
+    device._api.bind_and_get_key = AsyncMock(return_value=True)  # type: ignore[method-assign]
 
     await device.async_update()
 
@@ -68,7 +69,7 @@ async def test_update_calls_get_values(
 async def test_update_success_full(
     mock_detect_features: AsyncMock,  # Add mock arg
     gree_climate_device: GreeClimateFactory,
-    mock_hass: HomeAssistant,
+    mock_hass: HomeAssistant, # Keep mock_hass
 ) -> None:
     """Test successful state update from device response."""
     device: GreeClimate = gree_climate_device()
@@ -97,9 +98,9 @@ async def test_update_success_full(
     ]
 
     # Configure the mock API return value
-    device._api.get_status = AsyncMock(return_value=mock_status_list) # type: ignore[method-assign]
+    device._api.get_status = AsyncMock(return_value=mock_status_list)  # type: ignore[method-assign]
     device._api._is_bound = True
-    device._api.bind_and_get_key = AsyncMock(return_value=True) # type: ignore[method-assign]
+    device._api.bind_and_get_key = AsyncMock(return_value=True)  # type: ignore[method-assign]
 
     await device.async_update()
 
@@ -124,7 +125,7 @@ async def test_update_success_full(
 async def test_update_timeout(
     mock_detect_features: AsyncMock,  # Add mock arg
     gree_climate_device: GreeClimateFactory,
-    mock_hass: HomeAssistant,
+    mock_hass: HomeAssistant, # Keep mock_hass
 ) -> None:
     """Test state update when device communication times out."""
     device: GreeClimate = gree_climate_device()
@@ -137,13 +138,13 @@ async def test_update_timeout(
     )  # Ensure mock returns initial list
 
     # Simulate communication error by raising an exception
-    device._api.get_status = AsyncMock(side_effect=ConnectionError("Simulated timeout")) # type: ignore[method-assign]
+    device._api.get_status = AsyncMock(side_effect=ConnectionError("Simulated timeout"))  # type: ignore[method-assign]
 
     device._device_online = True
     device._online_attempts = 0
     device._max_online_attempts = 1
     device._api._is_bound = True
-    device._api.bind_and_get_key = AsyncMock(return_value=True) # type: ignore[method-assign]
+    device._api.bind_and_get_key = AsyncMock(return_value=True)  # type: ignore[method-assign]
 
     await device.async_update()
 
@@ -161,7 +162,7 @@ async def test_update_timeout(
 async def test_update_invalid_response_length(
     mock_detect_features: AsyncMock,  # Add mock arg
     gree_climate_device: GreeClimateFactory,
-    mock_hass: HomeAssistant,
+    mock_hass: HomeAssistant, # Keep mock_hass
     caplog: LogCaptureFixture,
 ) -> None:
     """Test state update when device returns list with incorrect length."""
@@ -176,11 +177,11 @@ async def test_update_invalid_response_length(
 
     # Simulate an invalid response
     invalid_response_list: List[Any] = [1, 1]  # Length doesn't match initial_options
-    device._api.get_status = AsyncMock(return_value=invalid_response_list) # type: ignore[method-assign]
+    device._api.get_status = AsyncMock(return_value=invalid_response_list)  # type: ignore[method-assign]
 
     device._device_online = True
     device._api._is_bound = True
-    device._api.bind_and_get_key = AsyncMock(return_value=True) # type: ignore[method-assign]
+    device._api.bind_and_get_key = AsyncMock(return_value=True)  # type: ignore[method-assign]
     device._max_online_attempts = 1
 
     await device.async_update()
@@ -203,7 +204,7 @@ async def test_update_invalid_response_length(
 async def test_update_sets_availability(
     mock_detect_features: AsyncMock,  # Add mock arg
     gree_climate_device: GreeClimateFactory,
-    mock_hass: HomeAssistant,
+    mock_hass: HomeAssistant, # Keep mock_hass
 ) -> None:
     """Test that update correctly sets the 'available' property on success/failure."""
     device: GreeClimate = gree_climate_device()
@@ -220,14 +221,14 @@ async def test_update_sets_availability(
 
     # Ensure key exists, etc.
     device._api._is_bound = True
-    device._api.bind_and_get_key = AsyncMock(return_value=True) # type: ignore[method-assign]
+    device._api.bind_and_get_key = AsyncMock(return_value=True)  # type: ignore[method-assign]
     device._max_online_attempts = 1
 
     # --- Test 1: Success Case ---
     device._device_online = False
     device._online_attempts = 0
     device._has_temp_sensor = None  # Reset flag to ensure detection runs
-    device._api.get_status = AsyncMock(return_value=mock_status_list) # type: ignore[method-assign]
+    device._api.get_status = AsyncMock(return_value=mock_status_list)  # type: ignore[method-assign]
     device._api.get_status.side_effect = None  # Clear side effect
 
     await device.async_update()
@@ -244,7 +245,7 @@ async def test_update_sets_availability(
     device._online_attempts = 0
     device._max_online_attempts = 1
     device._has_temp_sensor = None  # FIX: Reset flag to ensure detection runs
-    device._api.get_status = AsyncMock(side_effect=ConnectionError("Simulated failure")) # type: ignore[method-assign]
+    device._api.get_status = AsyncMock(side_effect=ConnectionError("Simulated failure"))  # type: ignore[method-assign]
 
     await device.async_update()
 
@@ -259,7 +260,9 @@ async def test_update_sets_availability(
     device._device_online = False
     device._online_attempts = 0
     device._has_temp_sensor = None  # FIX: Reset flag to ensure detection runs
-    device._api.get_status = AsyncMock(return_value=mock_status_list) # FIX: Removed unused type ignore
+    device._api.get_status = AsyncMock(
+        return_value=mock_status_list
+    )  # FIX: Removed unused type ignore
     device._api.get_status.side_effect = None  # Clear side effect
 
     await device.async_update()
@@ -280,7 +283,7 @@ async def test_update_sets_availability(
 async def test_update_gcm_calls_api_methods(
     mock_detect_features: AsyncMock,  # Add mock arg
     gree_climate_device: GreeClimateFactory,
-    mock_hass: HomeAssistant,
+    mock_hass: HomeAssistant, # Keep mock_hass
 ) -> None:
     """Test update calls correct API methods for GCM (v2) encryption. (Simplified)"""
     MOCK_GCM_KEY: str = "thisIsAMockKey16"
@@ -297,10 +300,10 @@ async def test_update_gcm_calls_api_methods(
     mock_api = device_v2._api
     mock_api._encryption_key = MOCK_GCM_KEY.encode("utf8")
     mock_api._is_bound = True  # Assume bound for this test
-    mock_api.bind_and_get_key = AsyncMock(return_value=True) # type: ignore[method-assign]
+    mock_api.bind_and_get_key = AsyncMock(return_value=True)  # type: ignore[method-assign]
 
     mock_status_values: List[Any] = [0] * len(initial_options)
-    mock_api.get_status = AsyncMock(return_value=mock_status_values) # type: ignore[method-assign]
+    mock_api.get_status = AsyncMock(return_value=mock_status_values)  # type: ignore[method-assign]
 
     await device_v2.async_update()
 
@@ -316,7 +319,7 @@ async def test_update_gcm_calls_api_methods(
 async def test_update_gcm_key_retrieval_and_update(
     mock_detect_features: AsyncMock,  # Add mock arg
     gree_climate_device: GreeClimateFactory,
-    mock_hass: HomeAssistant,
+    mock_hass: HomeAssistant, # Keep mock_hass
 ) -> None:
     """Test update retrieves GCM key, updates API, and fetches status."""
     DEVICE_SPECIFIC_KEY = b"mockDeviceKey123"
@@ -335,10 +338,10 @@ async def test_update_gcm_key_retrieval_and_update(
     mock_api = device_v2._api
     mock_api._is_bound = False  # Start unbound
     mock_api._encryption_key = None
-    mock_api.update_encryption_key = MagicMock() # type: ignore[method-assign] # FIX: Add ignore
+    mock_api.update_encryption_key = MagicMock()  # type: ignore[method-assign] # FIX: Add ignore
 
     # Mock return values for bind_and_get_key directly
-    mock_api.bind_and_get_key = AsyncMock() # type: ignore[method-assign]
+    mock_api.bind_and_get_key = AsyncMock()  # type: ignore[method-assign]
 
     async def bind_side_effect_async():  # Make side effect async
         mock_api._encryption_key = DEVICE_SPECIFIC_KEY
@@ -355,7 +358,7 @@ async def test_update_gcm_key_retrieval_and_update(
     mock_status_values[options_map["SetTem"]] = 23
     mock_status_values[options_map["WdSpd"]] = 1
     mock_status_values[options_map["Lig"]] = 1
-    mock_api.get_status = AsyncMock(return_value=mock_status_values) # type: ignore[method-assign]
+    mock_api.get_status = AsyncMock(return_value=mock_status_values)  # type: ignore[method-assign]
 
     # --- Action ---
     await device_v2.async_update()

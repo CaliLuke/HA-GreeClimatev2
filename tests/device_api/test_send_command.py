@@ -225,16 +225,19 @@ async def test_api_send_command_failure(
         ) as mock_get_gcm_cipher,  # pylint: disable=unused-variable
     ):
 
-        should_fetch_be_called = True
+        # should_fetch_be_called = True # Removed unused variable
         json_dumps_patch = None  # To hold the patch context manager if needed
 
         if failure_mode in ("not_bound", "mismatch"):
-            should_fetch_be_called = False
-        elif isinstance(failure_mode, TypeError) and "JSON serialization error" in str(failure_mode):
+            # should_fetch_be_called = False # Logic handled below
+            pass # No specific setup needed, fetch won't be called
+        elif isinstance(failure_mode, TypeError) and "JSON serialization error" in str(
+            failure_mode
+        ):
             # Patch json.dumps specifically for this case
             json_dumps_patch = patch("json.dumps", side_effect=failure_mode)
             json_dumps_patch.start()  # Manually start the patch
-            should_fetch_be_called = False
+            # should_fetch_be_called = False # Logic handled below
         elif isinstance(failure_mode, Exception):
             # Simulate _fetch_result raising an exception
             mock_fetch_result.side_effect = failure_mode
@@ -242,13 +245,25 @@ async def test_api_send_command_failure(
 
         try:
             # Act & Assert
-            if failure_mode in ("not_bound", "mismatch") or (isinstance(failure_mode, TypeError) and "JSON serialization error" in str(failure_mode)):
+            if failure_mode in ("not_bound", "mismatch") or (
+                isinstance(failure_mode, TypeError)
+                and "JSON serialization error" in str(failure_mode)
+            ):
                 # These setup/validation errors should result in None without calling fetch
                 command_result = await api.send_command(opt_keys, p_values)
                 assert command_result is None
                 mock_fetch_result.assert_not_awaited()
-            elif isinstance(failure_mode, (socket.timeout, ConnectionError, ValueError, json.JSONDecodeError, KeyError)):
-                 # Specific exceptions caught within send_command should return None
+            elif isinstance(
+                failure_mode,
+                (
+                    socket.timeout,
+                    ConnectionError,
+                    ValueError,
+                    json.JSONDecodeError,
+                    KeyError,
+                ),
+            ):
+                # Specific exceptions caught within send_command should return None
                 command_result = await api.send_command(opt_keys, p_values)
                 assert command_result is None
                 mock_fetch_result.assert_awaited_once()

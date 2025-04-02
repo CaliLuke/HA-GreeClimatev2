@@ -6,15 +6,20 @@ import socket  # For exception handling
 import voluptuous as vol
 
 from homeassistant import config_entries, exceptions, data_entry_flow
-from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME
+from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME # Removed CONF_IP_ADDRESS
+
+# Line 10 removed
 
 # Import SensorDeviceClass for filtering entity selector
 from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.core import HomeAssistant
+
+# Line 14 removed
+from homeassistant.core import HomeAssistant, callback
 
 # Import EntitySelector and config
 from homeassistant.helpers import selector
-from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
+# Removed unused EntitySelector, EntitySelectorConfig
+# from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 from homeassistant.helpers.device_registry import format_mac  # For cleaning MAC
 
 # Assuming DOMAIN is defined in const.py, otherwise define it here
@@ -25,7 +30,10 @@ from .const import (
     DEFAULT_TIMEOUT,
     CONF_ENCRYPTION_VERSION,  # Import constant
     CONF_TEMP_SENSOR,  # Import new constant
+    CONF_DEVICE_MODEL,  # Import new constant
 )
+
+# Line 32 removed
 from .device_api import GreeDeviceApi  # Import the API
 
 _LOGGER = logging.getLogger(__name__)
@@ -140,12 +148,108 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, str]:
         raise CannotConnect from conn_ex
     except InvalidAuth:  # Re-raise InvalidAuth if it came from above
         raise
-    # FIX: Catch more specific potential errors from API init/bind if needed,
-    # but keep broad Exception as final fallback with logging.
-    except Exception as ex:
+    # Broad exception catch as a fallback during validation
+    except Exception as ex: # pylint: disable=broad-except
         _LOGGER.exception("Unexpected error during validation: %s", ex)
         # Map unexpected errors during validation to invalid_auth for now.
         raise InvalidAuth from ex
+
+
+class GreeV2OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle GreeV2 options."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict | None = None
+    ) -> data_entry_flow.FlowResult:
+        """Manage the options."""
+        errors: dict[str, str] = {}
+        # Get current options, falling back to original data for defaults
+        options = self.config_entry.options
+        data = self.config_entry.data  # Original config data
+
+        if user_input is not None:
+            # Get original IP for comparison
+            original_ip = options.get(CONF_HOST, data.get(CONF_HOST))
+            new_ip = user_input.get(CONF_HOST)
+
+            if new_ip != original_ip:
+                _LOGGER.info(
+                    "IP address changed from %s to %s, validating...",
+                    original_ip,
+                    new_ip,
+                )
+                # Construct data needed for validation (needs MAC and Enc Version from original data)
+                validation_data = {
+                    CONF_HOST: new_ip,
+                    CONF_MAC: data.get(CONF_MAC),  # Get original MAC
+                    CONF_ENCRYPTION_VERSION: data.get(
+                        CONF_ENCRYPTION_VERSION
+                    ),  # Get original Enc Version
+                }
+                try:
+                    # Use the same validation function as the main flow
+                    await validate_input(self.hass, validation_data)
+                    _LOGGER.info("Validation successful for new IP %s", new_ip)
+                except CannotConnect:
+                    _LOGGER.error("Cannot connect to new IP address %s", new_ip)
+                    errors["base"] = "cannot_connect"
+                except (
+                    InvalidAuth
+                ):  # Should not happen if only IP changed, but handle defensively
+                    _LOGGER.error("Authentication/binding failed for new IP %s", new_ip)
+                    errors["base"] = "invalid_auth"  # Or a more specific error?
+                # Broad exception catch as a fallback during IP validation
+                except Exception as e: # pylint: disable=broad-except
+                    _LOGGER.exception(
+                        "Unexpected error validating new IP %s: %s", new_ip, e
+                    )
+                    errors["base"] = "unknown"
+
+            if not errors:
+                # Save only the editable fields to options
+                data_to_save = {
+                    CONF_HOST: user_input.get(CONF_HOST),
+                    CONF_TEMP_SENSOR: user_input.get(CONF_TEMP_SENSOR),
+                    "area_id": user_input.get("area_id"),
+                    # Also save the name if provided, can be used by entity naming
+                    CONF_NAME: user_input.get(CONF_NAME),
+                }
+                # Use async_create_entry with empty title, data becomes config_entry.options
+                return self.async_create_entry(title="", data=data_to_save) # type: ignore[return-value]
+
+        # Define schema, using options as defaults for editable, data for disabled
+        options_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_NAME, default=options.get(CONF_NAME, self.config_entry.title)
+                ): str,
+                vol.Required(
+                    CONF_HOST, default=options.get(CONF_HOST, data.get(CONF_HOST))
+                ): str,
+                vol.Optional(
+                    CONF_TEMP_SENSOR, default=options.get(CONF_TEMP_SENSOR)
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor", device_class=SensorDeviceClass.TEMPERATURE
+                    )
+                ),
+                vol.Optional(
+                    "area_id", default=options.get("area_id")
+                ): selector.AreaSelector(),
+                # Display-only fields: Use Optional, they won't be saved by the logic above
+                # Use description/suggested_value to hint to UI it's display-only if possible
+                vol.Optional(CONF_DEVICE_MODEL, description={"suggested_value": data.get(CONF_DEVICE_MODEL, "Unknown")}): str,
+                vol.Optional(CONF_ENCRYPTION_VERSION, description={"suggested_value": data.get(CONF_ENCRYPTION_VERSION, "Unknown")}): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="init", data_schema=options_schema, errors=errors
+        ) # type: ignore[return-value]
 
 
 @config_entries.HANDLERS.register(DOMAIN)
@@ -158,6 +262,15 @@ class GreeV2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     _LOGGER.info("GreeV2ConfigFlow class defining...")
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Get the options flow for this handler."""
+        return GreeV2OptionsFlowHandler(config_entry)
+
     # CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL # Add later if needed
 
     async def async_step_user(self, user_input=None):
@@ -193,8 +306,8 @@ class GreeV2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except exceptions.HomeAssistantError as e:  # Catch other HA errors
                 _LOGGER.error("Config flow error: %s", e)
                 errors["base"] = "unknown"  # Default for now
-            # FIX: Catch specific exceptions if possible, otherwise log the broad one
-            except Exception as e:
+            # Broad exception catch as a fallback for the whole user step
+            except Exception as e: # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception in config flow: %s", e)
                 errors["base"] = "unknown"
 

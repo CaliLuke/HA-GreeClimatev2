@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-import pytest  # Added import
+# import pytest  # Removed unused import
 from homeassistant.components.climate import ClimateEntityFeature, HVACMode
 from homeassistant.const import UnitOfTemperature
 
@@ -13,7 +13,7 @@ from custom_components.greev2.const import (  # Import constants from const.py
     MIN_TEMP,
     PRESET_MODES,
     SWING_MODES,
-    DEFAULT_HORIZONTAL_SWING,  # Import default
+    # DEFAULT_HORIZONTAL_SWING, # Removed unused import
 )
 
 # Import type alias from conftest
