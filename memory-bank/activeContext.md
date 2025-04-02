@@ -33,6 +33,10 @@
 *   [2025-04-01 20:53:54] Fixed `TypeError` bug in `climate.py` found during release testing.
 *   [2025-04-01 20:54:13] Created release 2.14.22 using `release.sh`.
 
+*   [2025-04-01 22:05:36] Fixed 5 failing tests in `tests/test_update.py` by patching `_api._is_bound` and correcting `device_api.get_status` return type.
+*   [2025-04-01 22:08:57] Fixed `mypy` error in `climate.py` related to `update_encryption_key` call.
+*   [2025-04-01 22:10:29] Fixed `pylint` warning (misplaced docstring) in `device_api.py`.
+*   [2025-04-01 22:13:12] Created release 2.14.23 including test fixes, static analysis fixes, and new `const.py`/`refactor_plan_incremental.md` files.
 *   What is the exact latest stable version of the `homeassistant` library on PyPI?
 *   What specific tests are failing or need improvement?
 *   What is the preferred method for updating the virtual environment (`uv pip install --upgrade` directly vs. updating `requirements_test.txt` first)?

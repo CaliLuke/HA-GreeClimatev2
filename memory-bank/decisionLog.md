@@ -242,3 +242,22 @@ This file records architectural and implementation decisions using a list format
 *   Script created GitHub release for `2.14.22` with auto-generated notes.
 
 ---
+
+---
+
+## Decision
+
+*   [2025-04-01 22:13:12] Create release 2.14.23.
+
+## Rationale
+
+*   Test suite fixes and minor static analysis fixes completed. Codebase is stable for a new patch release.
+
+## Implementation Details
+
+*   Committed changes including test fixes (`test_update.py`), `mypy` fix (`climate.py`), `pylint` fix (`device_api.py`), and added untracked files (`const.py`, `refactor_plan_incremental.md`).
+*   Ran `./release.sh` script.
+*   Script successfully identified `2.14.22` as latest, calculated `2.14.23` as next.
+*   User confirmed.
+*   Script created and pushed tag `2.14.23`.
+*   Script created GitHub release for `2.14.23` with auto-generated notes.

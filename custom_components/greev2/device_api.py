@@ -497,32 +497,30 @@ class GreeDeviceApi:
             )
             _LOGGER.debug("Received status response pack: %s", received_json_pack)
 
-            # Extract the 'dat' field which contains the status values dictionary
+            # Extract the 'dat' field which should contain the list of status values
             if "dat" in received_json_pack and isinstance(
-                received_json_pack["dat"], dict
+                received_json_pack["dat"], list
             ):
-                status_dict: Dict[str, Any] = received_json_pack["dat"]
-                # Return values as a list in the order requested by property_names
-                status_list: List[Any] = []
-                for prop_name in property_names:
-                    if prop_name in status_dict:
-                        status_list.append(status_dict[prop_name])
-                    else:
-                        _LOGGER.warning(
-                            "Property '%s' requested but not found in status response dict: %s",
-                            prop_name,
-                            status_dict,
-                        )
-                        status_list.append(None)  # Append None or handle as appropriate
-                return status_list
+                status_list: List[Any] = received_json_pack["dat"]
+                # Optional: Validate list length against requested property_names length
+                if len(status_list) == len(property_names):
+                    return status_list
+                else:
+                    _LOGGER.error(
+                        "Status response list length mismatch. Expected %d, got %d: %s",
+                        len(property_names),
+                        len(status_list),
+                        status_list,
+                    )
+                    return None  # Length mismatch
             elif "dat" not in received_json_pack:
                 _LOGGER.error(
                     "'dat' field missing from status response: %s", received_json_pack
                 )
                 return None
-            else:  # 'dat' exists but is not a dict
+            else:  # 'dat' exists but is not a list
                 _LOGGER.error(
-                    "'dat' field in status response is not a dictionary: %s",
+                    "'dat' field in status response is not a list: %s",
                     received_json_pack["dat"],
                 )
                 return None

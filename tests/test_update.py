@@ -390,9 +390,21 @@ async def test_update_gcm_key_retrieval_and_update(
 
     # Simulate _fetch_result: First call (binding) returns the device key, second call (status) returns status data
     mock_bind_response: Dict[str, Any] = {"key": DEVICE_SPECIFIC_KEY.decode("utf8")}
-    # Use dict format for status data
-    mock_status_data: Dict[str, Any] = {key: 0 for key in device_v2._options_to_fetch}
-    mock_status_response: Dict[str, Any] = {"dat": mock_status_data}
+    # Use list format for status data, matching real device response structure
+    # Define some specific values to test state updates
+    mock_status_values: List[Any] = [0] * len(device_v2._options_to_fetch)
+    options_map = {name: i for i, name in enumerate(device_v2._options_to_fetch)}
+    mock_status_values[options_map["Pow"]] = 1  # On
+    mock_status_values[options_map["Mod"]] = 1  # Cool
+    mock_status_values[options_map["SetTem"]] = 23  # 23C
+    mock_status_values[options_map["WdSpd"]] = 1  # Low
+    mock_status_values[options_map["Lig"]] = 1  # Light On
+
+    # Simulate the structure returned by _fetch_result which includes 'dat' (as list) and 'cols'
+    mock_status_response: Dict[str, Any] = {
+        "dat": mock_status_values,
+        "cols": device_v2._options_to_fetch,  # Ensure cols matches fetched options
+    }
     mock_fetch_result.side_effect = [mock_bind_response, mock_status_response]
 
     # Simulate the key being updated on the API object after binding
@@ -487,6 +499,12 @@ async def test_update_gcm_key_retrieval_and_update(
 
     # 4. Verify device state
     assert device_v2._encryption_key == DEVICE_SPECIFIC_KEY  # Climate object's key
+
+    # 5. Verify device state updated correctly from status list
+    assert device_v2.hvac_mode == HVACMode.COOL
+    assert device_v2.target_temperature == 23.0
+    assert device_v2.fan_mode == FAN_MODES[1]  # Low
+    assert device_v2._current_lights == STATE_ON
 
 
 # --- External Temperature Sensor Update Tests ---
