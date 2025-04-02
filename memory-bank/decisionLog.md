@@ -207,3 +207,38 @@ This file records architectural and implementation decisions using a list format
 *   **Implementation:** Added 5 integration tests (`test_set_hvac_mode_integration`, etc.) to `tests/test_command.py`. These tests call service methods and mock only `_api.send_command`. Fixed initial failures by also mocking `gree_get_values` and setting `_first_time_run = False` in test setup. Confirmed tests pass via `pytest`. Ran `black` and `mypy` checks successfully.
 
 ---
+
+## Decision
+
+*   [2025-04-01 20:53:54] Fix `TypeError` in `sync_state` calling `send_state_to_ac`.
+
+## Rationale
+
+*   Manual testing of release 2.14.21 revealed a `TypeError` when calling services like `set_hvac_mode`.
+*   The `timeout` argument was removed from the `send_state_to_ac` definition, but the call site within `sync_state` was not updated, causing the error.
+
+## Implementation Details
+
+*   Removed the `self._timeout` argument from the `self.send_state_to_ac()` call within the `sync_state` method in `custom_components/greev2/climate.py`.
+*   Ran `pytest` to confirm tests still passed.
+
+---
+
+## Decision
+
+*   [2025-04-01 20:54:13] Create release 2.14.22.
+
+## Rationale
+
+*   A bug was found after creating release 2.14.21. Following the 'New Patch Release' strategy, the fix was committed and a new release was created.
+
+## Implementation Details
+
+*   Committed the `TypeError` fix.
+*   Ran `./release.sh` script.
+*   Script successfully identified `2.14.21` as latest, calculated `2.14.22` as next.
+*   User confirmed.
+*   Script created and pushed tag `2.14.22`.
+*   Script created GitHub release for `2.14.22` with auto-generated notes.
+
+---

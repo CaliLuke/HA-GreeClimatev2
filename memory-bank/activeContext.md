@@ -7,7 +7,7 @@
 
 ## Current Focus
 
-*   Improve the project's test suite (general). # Reverted focus after adding integration tests
+*   Manual testing of release 2.14.22.
 *   Paused `pylint` cleanup; focus on test suite improvement / dependency updates.
 *   Update `homeassistant` dependency to the latest version.
 
@@ -30,6 +30,8 @@
 *   [2025-04-01 20:22:43] Decided to add integration tests for service calls before refactoring `climate.py`.
 *   [2025-04-01 20:43:55] Added integration tests for service calls (`set_hvac_mode`, `set_temperature`, `set_fan_mode`, `turn_on`, `turn_off`) to `tests/test_command.py`. Fixed initial failures by mocking `gree_get_values` and setting `_first_time_run=False`.
 *   [2025-04-01 20:48:57] Ran `black` formatting and `mypy` type checking; no issues found.
+*   [2025-04-01 20:53:54] Fixed `TypeError` bug in `climate.py` found during release testing.
+*   [2025-04-01 20:54:13] Created release 2.14.22 using `release.sh`.
 
 *   What is the exact latest stable version of the `homeassistant` library on PyPI?
 *   What specific tests are failing or need improvement?

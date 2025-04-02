@@ -8,7 +8,8 @@ from homeassistant.core import HomeAssistant
 
 # Assuming climate.py is in custom_components/gree relative to the root
 # Adjust the import path if your structure is different
-from custom_components.greev2.climate import (
+from custom_components.greev2.climate import GreeClimate # Keep entity import
+from custom_components.greev2.const import ( # Import constants from const.py
     DEFAULT_PORT,
     DEFAULT_TARGET_TEMP_STEP,
     DEFAULT_TIMEOUT,
@@ -16,7 +17,7 @@ from custom_components.greev2.climate import (
     HVAC_MODES,
     PRESET_MODES,
     SWING_MODES,
-    GreeClimate,
+    # Add any other constants needed by tests if missing
 )
 
 # --- Global Mocks ---

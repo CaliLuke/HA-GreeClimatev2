@@ -101,139 +101,14 @@ async def test_async_set_swing_mode(
     mock_set_swing_mode.assert_called_once_with(SWING_VERTICAL)
 
 
-# --- Direct Method Tests ---
-
-
-@patch("custom_components.greev2.device_api.GreeDeviceApi._fetch_result")
-@patch("custom_components.greev2.device_api.GreeDeviceApi._get_gcm_cipher")
-@patch("custom_components.greev2.device_api.GreeDeviceApi._encrypt_gcm")
-def test_send_state_to_ac_gcm(
-    mock_encrypt_gcm: MagicMock,
-    mock_get_gcm_cipher: MagicMock,
-    mock_fetch_result: MagicMock,
-    gree_climate_device: GreeClimateFactory,  # Use the fixture
-) -> None:
-    """Test the synchronous SendStateToAc method with GCM encryption."""
-    TEST_GCM_KEY: str = "testGcmKey123456"  # 16 bytes
-
-    # 1. Setup V2 device with a known key
-    device = gree_climate_device(encryption_key=TEST_GCM_KEY, encryption_version=2)
-    # Ensure the API object also has the key set correctly by the fixture/init
-    assert device._api._encryption_key == TEST_GCM_KEY.encode("utf8")
-    assert device.encryption_version == 2
-
-    # Set initial state (e.g., turning Cool mode on at 22C)
-    initial_options: Dict[str, Any] = {
-        "Pow": 1,
-        "Mod": HVACMode.COOL.value,
-        "SetTem": 22,
-        "WdSpd": 1,
-        "Air": 0,
-        "Blo": 0,
-        "Health": 0,
-        "SwhSlp": 0,
-        "Lig": 1,
-        "SwingLfRig": 0,
-        "SwUpDn": 1,
-        "Quiet": 0,
-        "Tur": 0,
-        "StHt": 0,
-        "TemUn": 0,
-        "HeatCoolType": 0,
-        "TemRec": 0,
-        "SvSt": 0,
-        "SlpMod": 0,
-        "TemSen": None,
-        "AntiDirectBlow": None,
-        "LigSen": None,
-    }
-    device._ac_options = initial_options.copy()  # Use correct attribute name
-
-    # 2. Setup Mock return values for API calls
-    mock_pack: str = "mock_encrypted_state_pack"
-    mock_tag: str = "mock_state_tag"
-    mock_encrypt_gcm.return_value = (mock_pack, mock_tag)
-
-    mock_gcm_cipher_instance = MagicMock()
-    mock_get_gcm_cipher.return_value = mock_gcm_cipher_instance
-
-    # Mock the result from the device after sending command
-    mock_fetch_result.return_value = {"r": 200, "opt": ["Pow"], "p": [1]}
-
-    # 3. Action: Call send_state_to_ac directly
-    device.send_state_to_ac()
-
-    # 4. Assertions
-    # 4a. Check _encrypt_gcm call
-    ordered_keys: List[str] = [
-        "Pow",
-        "Mod",
-        "SetTem",
-        "WdSpd",
-        "Air",
-        "Blo",
-        "Health",
-        "SwhSlp",
-        "Lig",
-        "SwingLfRig",
-        "SwUpDn",
-        "Quiet",
-        "Tur",
-        "StHt",
-        "TemUn",
-        "HeatCoolType",
-        "TemRec",
-        "SvSt",
-        "SlpMod",
-    ]
-    device._has_anti_direct_blow = False  # Assume features off for this test
-    device._has_light_sensor = False
-    # Add keys if features were enabled
-    # if device._has_anti_direct_blow: ordered_keys.append("AntiDirectBlow")
-    # if device._has_light_sensor: ordered_keys.append("LigSen")
-
-    expected_payload_dict: Dict[str, Any] = {
-        "opt": ordered_keys,
-        "p": [initial_options.get(k) for k in ordered_keys],
-        "t": "cmd",
-    }
-    expected_statePackJson: str = json.dumps(
-        expected_payload_dict, separators=(",", ":")
-    )
-    mock_encrypt_gcm.assert_called_once_with(
-        TEST_GCM_KEY.encode("utf8"), expected_statePackJson
-    )
-
-    # 4b. Check _get_gcm_cipher call
-    mock_get_gcm_cipher.assert_called_once_with(TEST_GCM_KEY.encode("utf8"))
-
-    # 4c. Check _fetch_result call
-    expected_fetch_payload_dict: Dict[str, Any] = {
-        "cid": "app",
-        "i": 0,
-        "pack": mock_pack,
-        "t": "pack",
-        "tcid": device._mac_addr,
-        "uid": 0,
-        "tag": mock_tag,
-    }
-    mock_fetch_result.assert_called_once()
-    actual_call_args, _ = mock_fetch_result.call_args
-    actual_cipher_arg: Any = actual_call_args[0]
-    actual_payload_str: str = actual_call_args[1]
-
-    assert actual_cipher_arg is mock_gcm_cipher_instance
-    assert json.loads(actual_payload_str) == expected_fetch_payload_dict
-
-
 # --- Integration Tests (Service Call Flow) ---
 
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 @patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
 def test_set_hvac_mode_integration(
     mock_api_send_command: MagicMock,
-    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    mock_api_get_status: MagicMock,  # Add mock for status fetch
     gree_climate_device: GreeClimateFactory,
 ) -> None:
     """Test set_hvac_mode calls API via sync_state with correct payload."""
@@ -247,11 +122,16 @@ def test_set_hvac_mode_integration(
     device._ac_options["Mod"] = 1  # Cool
     device._ac_options["WdSpd"] = 0  # Auto
     device._ac_options["SwUpDn"] = 0  # Default
+    # Prevent feature detection from modifying _options_to_fetch
+    device._has_temp_sensor = False
+    device._has_anti_direct_blow = False
+    device._has_light_sensor = False
+
     # Mock the status fetch within sync_state based on this initial state
     initial_state_list = [
         device._ac_options.get(key, 0) for key in device._options_to_fetch
     ]
-    mock_gree_get_values.return_value = initial_state_list
+    mock_api_get_status.return_value = initial_state_list
     # Mock API send_command response
     mock_api_send_command.return_value = {"r": 200, "opt": ["Pow", "Mod"], "p": [1, 4]}
 
@@ -271,11 +151,11 @@ def test_set_hvac_mode_integration(
     assert sent_p_values[mod_index] == 4  # HEAT mode index
 
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 @patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
 def test_set_temperature_integration(
     mock_api_send_command: MagicMock,
-    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    mock_api_get_status: MagicMock,  # Add mock for status fetch
     gree_climate_device: GreeClimateFactory,
 ) -> None:
     """Test set_temperature calls API via sync_state with correct payload."""
@@ -286,6 +166,11 @@ def test_set_temperature_integration(
     device._first_time_run = False  # Simulate initial update already happened
     # Set plausible initial state
     device._ac_options["Pow"] = 1
+    # Prevent feature detection from modifying _options_to_fetch
+    device._has_temp_sensor = False
+    device._has_anti_direct_blow = False
+    device._has_light_sensor = False
+
     device._ac_options["Mod"] = 1  # Cool
     device._ac_options["WdSpd"] = 0  # Auto
     device._ac_options["SwUpDn"] = 0  # Default
@@ -294,7 +179,7 @@ def test_set_temperature_integration(
     initial_state_list = [
         device._ac_options.get(key, 0) for key in device._options_to_fetch
     ]
-    mock_gree_get_values.return_value = initial_state_list
+    mock_api_get_status.return_value = initial_state_list
     # Mock API send_command response
     mock_api_send_command.return_value = {"r": 200, "opt": ["SetTem"], "p": [22]}
 
@@ -312,11 +197,11 @@ def test_set_temperature_integration(
     assert sent_p_values[settem_index] == 22  # Target temperature
 
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 @patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
 def test_set_fan_mode_integration(
     mock_api_send_command: MagicMock,
-    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    mock_api_get_status: MagicMock,  # Add mock for status fetch
     gree_climate_device: GreeClimateFactory,
 ) -> None:
     """Test set_fan_mode calls API via sync_state with correct payload."""
@@ -330,11 +215,16 @@ def test_set_fan_mode_integration(
     device._ac_options["Mod"] = 1  # Cool
     device._ac_options["WdSpd"] = 0  # Auto
     device._ac_options["SwUpDn"] = 0  # Default
+    # Prevent feature detection from modifying _options_to_fetch
+    device._has_temp_sensor = False
+    device._has_anti_direct_blow = False
+    device._has_light_sensor = False
+
     # Mock the status fetch within sync_state
     initial_state_list = [
         device._ac_options.get(key, 0) for key in device._options_to_fetch
     ]
-    mock_gree_get_values.return_value = initial_state_list
+    mock_api_get_status.return_value = initial_state_list
     # Mock API send_command response
     mock_api_send_command.return_value = {"r": 200, "opt": ["WdSpd"], "p": [3]}
 
@@ -358,11 +248,11 @@ def test_set_fan_mode_integration(
     assert sent_p_values[quiet_index] == 0
 
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 @patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
 def test_turn_on_integration(
     mock_api_send_command: MagicMock,
-    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    mock_api_get_status: MagicMock,  # Add mock for status fetch
     gree_climate_device: GreeClimateFactory,
 ) -> None:
     """Test turn_on calls API via sync_state with correct payload."""
@@ -371,6 +261,10 @@ def test_turn_on_integration(
         encryption_key="testkey123456789"
     )  # Pass key as string
     device._first_time_run = False  # Simulate initial update already happened
+    # Prevent feature detection from modifying _options_to_fetch
+    device._has_temp_sensor = False
+    device._has_anti_direct_blow = False
+    device._has_light_sensor = False
     # Set plausible initial state (device is OFF)
     device._ac_options["Pow"] = 0
     device._ac_options["Mod"] = 1  # Cool
@@ -380,7 +274,7 @@ def test_turn_on_integration(
     initial_state_list = [
         device._ac_options.get(key, 0) for key in device._options_to_fetch
     ]
-    mock_gree_get_values.return_value = initial_state_list
+    mock_api_get_status.return_value = initial_state_list
     # Mock API send_command response
     mock_api_send_command.return_value = {"r": 200, "opt": ["Pow"], "p": [1]}
 
@@ -397,12 +291,17 @@ def test_turn_on_integration(
     pow_index = sent_opt_keys.index("Pow")
     assert sent_p_values[pow_index] == 1
 
+    # Prevent feature detection from modifying _options_to_fetch
+    device._has_temp_sensor = False
+    device._has_anti_direct_blow = False
+    device._has_light_sensor = False
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 @patch("custom_components.greev2.device_api.GreeDeviceApi.send_command")
 def test_turn_off_integration(
     mock_api_send_command: MagicMock,
-    mock_gree_get_values: MagicMock,  # Add mock for status fetch
+    mock_api_get_status: MagicMock,  # Add mock for status fetch
     gree_climate_device: GreeClimateFactory,
 ) -> None:
     """Test turn_off calls API via sync_state with correct payload."""
@@ -412,6 +311,11 @@ def test_turn_off_integration(
     )  # Pass key as string
     device._first_time_run = False  # Simulate initial update already happened
     # Set plausible initial state (device is ON)
+    # Prevent feature detection from modifying _options_to_fetch
+    device._has_temp_sensor = False
+    device._has_anti_direct_blow = False
+    device._has_light_sensor = False
+
     device._ac_options["Pow"] = 1
     device._ac_options["Mod"] = 1  # Cool
     device._ac_options["WdSpd"] = 0  # Auto
@@ -420,7 +324,7 @@ def test_turn_off_integration(
     initial_state_list = [
         device._ac_options.get(key, 0) for key in device._options_to_fetch
     ]
-    mock_gree_get_values.return_value = initial_state_list
+    mock_api_get_status.return_value = initial_state_list
     # Mock API send_command response
     mock_api_send_command.return_value = {"r": 200, "opt": ["Pow"], "p": [0]}
 

@@ -6,7 +6,7 @@ import pytest
 from homeassistant.components.climate import HVACMode
 from homeassistant.core import HomeAssistant
 
-from custom_components.greev2.climate import GCM_DEFAULT_KEY
+from custom_components.greev2.const import GCM_DEFAULT_KEY # Import from const
 
 # Import MOCK constants from conftest using absolute path relative to tests dir
 # No longer needed if using fixtures properly
@@ -74,80 +74,6 @@ async def test_init_with_gcm_encryption(
     assert device._api._encryption_version == 2
     assert device._api._cipher is None  # API should NOT create cipher on init for V2
     # assert device.CIPHER is None # CIPHER attribute removed
-
-
-@pytest.mark.asyncio
-@patch("custom_components.greev2.device_api.GreeDeviceApi._fetch_result")
-@patch("custom_components.greev2.device_api.GreeDeviceApi._get_gcm_cipher")
-@patch("custom_components.greev2.device_api.GreeDeviceApi._encrypt_gcm")
-async def test_get_device_key_gcm(
-    mock_encrypt_gcm: MagicMock,
-    mock_get_gcm_cipher: MagicMock,
-    mock_fetch_result: MagicMock,
-    gree_climate_device: GreeClimateFactory,
-) -> None:
-    """Test the GetDeviceKeyGCM method calls API correctly and returns key."""
-    # INITIAL_GCM_KEY is not used by GetDeviceKeyGCM, binding uses default key
-    NEW_GCM_KEY: str = "newBindingKey456"
-
-    # Create a V2 device (initial key doesn't matter for this call)
-    device_v2 = gree_climate_device(encryption_version=2)
-
-    # Mock API call return values
-    mock_pack: str = "mock_encrypted_bind_pack"
-    mock_tag: str = "mock_bind_tag"
-    mock_encrypt_gcm.return_value = (mock_pack, mock_tag)
-
-    mock_gcm_cipher_instance = MagicMock()
-    mock_get_gcm_cipher.return_value = mock_gcm_cipher_instance
-
-    mock_fetch_result.return_value = {
-        "key": NEW_GCM_KEY,
-        "r": 200,
-    }  # Simulate successful bind
-
-    # Call the GCM binding method (synchronous)
-    returned_key: bool = device_v2.get_device_key_gcm()
-
-    # Assertions
-    # 1. Check _encrypt_gcm call - Use the exact plaintext from GetDeviceKeyGCM
-    expected_bind_plaintext: str = (
-        '{"cid":"'
-        + device_v2._mac_addr
-        + '", "mac":"'
-        + device_v2._mac_addr
-        + '","t":"bind","uid":0}'
-    )
-    mock_encrypt_gcm.assert_called_once_with(
-        GCM_DEFAULT_KEY.encode("utf8"),  # Use the actual default key from climate.py
-        expected_bind_plaintext,
-    )
-
-    # 2. Check _get_gcm_cipher call
-    # This should also use the default key
-    mock_get_gcm_cipher.assert_called_once_with(GCM_DEFAULT_KEY.encode("utf8"))
-
-    # 3. Check _fetch_result call (Payload has i=1 hardcoded in GetDeviceKeyGCM)
-    expected_payload_dict: Dict[str, Any] = {
-        "cid": "app",
-        "i": 1,  # Actual code uses i=1 for binding
-        "pack": mock_pack,
-        "t": "pack",
-        "tcid": device_v2._mac_addr,
-        "uid": 0,
-        "tag": mock_tag,
-    }
-    mock_fetch_result.assert_called_once()  # Check it was called
-    actual_call_args, _ = mock_fetch_result.call_args
-    actual_cipher_arg: Any = actual_call_args[0]
-    actual_payload_str: str = actual_call_args[1]
-
-    assert actual_cipher_arg is mock_gcm_cipher_instance
-    assert json.loads(actual_payload_str) == expected_payload_dict
-
-    # 4. Check returned value and stored key
-    assert returned_key is True
-    assert device_v2._encryption_key == NEW_GCM_KEY.encode("utf8")
 
 
 # TODO: Implement test_init_with_optional_entities

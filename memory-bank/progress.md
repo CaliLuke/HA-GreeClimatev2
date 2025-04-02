@@ -24,6 +24,8 @@ This file tracks the project's progress using a task list format.
 *   [X] Add integration tests for service calls (mocking only `_api.send_command`). (2025-04-01 20:43:55)
 *   [X] Format code using `black`. (2025-04-01 20:48:39)
 *   [X] Verify type hints using `mypy` after test additions. (2025-04-01 20:48:57)
+*   [X] Fix bug discovered during release testing (`TypeError` on `set_hvac_mode`). (2025-04-01 20:53:54)
+*   [X] Create release 2.14.22 using `release.sh`. (2025-04-01 20:54:13)
 *   [ ] Define plan for improving the test suite.
 *   [ ] Update `homeassistant` dependency in `requirements_test.txt`.
 *   [ ] Install updated dependencies using `uv`.
@@ -31,9 +33,10 @@ This file tracks the project's progress using a task list format.
 *   [ ] Identify failing/inadequate tests.
 *   [ ] Propose test improvements/fixes.
 *   [ ] Implement test improvements/fixes.
-*   [X] Run tests (`pytest`) and verify fixes. (2025-04-01 20:43:55)
+*   [X] Run tests (`pytest`) and verify fixes. (2025-04-01 20:53:54) # Timestamp reflects test run after bug fix
 
 ## Next Steps
 
+*   Manual testing of release 2.14.22.
 *   Continue with test suite improvement plan (general).
 *   Create a detailed plan for test suite improvement.

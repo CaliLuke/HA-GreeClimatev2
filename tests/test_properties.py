@@ -3,7 +3,8 @@ from typing import Any, Dict
 from homeassistant.components.climate import ClimateEntityFeature, HVACMode
 from homeassistant.const import UnitOfTemperature
 
-from custom_components.greev2.climate import (
+from custom_components.greev2.climate import GreeClimate  # Import class for type hint
+from custom_components.greev2.const import ( # Import constants from const.py
     DEFAULT_TARGET_TEMP_STEP,
     FAN_MODES,
     HVAC_MODES,
@@ -11,7 +12,6 @@ from custom_components.greev2.climate import (
     MIN_TEMP,
     PRESET_MODES,
     SWING_MODES,
-    GreeClimate,  # Import class for type hint
 )
 
 # Import type alias from conftest

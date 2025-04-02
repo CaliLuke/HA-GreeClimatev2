@@ -20,9 +20,8 @@ CipherType = Any
 
 _LOGGER = logging.getLogger(__name__)
 
-# Placeholder constants for GCM (might need to be moved/configured)
-GCM_IV: bytes = b"\x54\x40\x78\x44\x49\x67\x5a\x51\x6c\x5e\x63\x13"
-GCM_ADD: bytes = b"qualcomm-test"
+# Import constants
+from . import const
 
 
 class GreeDeviceApi:
@@ -36,6 +35,8 @@ class GreeDeviceApi:
     _encryption_key: Optional[bytes]
     _encryption_version: int
     _cipher: Optional[CipherType]  # Type hint for the cipher object
+
+    _is_bound: bool = False
 
     def __init__(
         self,
@@ -59,17 +60,132 @@ class GreeDeviceApi:
         self._encryption_key = encryption_key
         self._encryption_version = encryption_version
         self._cipher = None
+        # self._is_bound initialized earlier
 
-        if self._encryption_key and self._encryption_version == 1:
-            # Type checker might complain if AESCipherECB wasn't imported, but Any works
+        if self._encryption_key:
+            self._is_bound = True  # If a key is provided, assume it's bound
+            if self._encryption_version == 1:
+                # Type checker might complain if AESCipherECB wasn't imported, but Any works
+                self._cipher = AES.new(self._encryption_key, AES.MODE_ECB)
+                _LOGGER.debug(
+                    "Initialized with V1 key, cipher created, marked as bound."
+                )
+            else:  # V2 or other
+                _LOGGER.debug(
+                    "Initialized with V2 key, marked as bound (no cipher created on init)."
+                )
+        else:
+            self._is_bound = False  # Explicitly set if no key provided
+            _LOGGER.debug("Encryption key not provided yet, marked as not bound.")
+
+    def _bind_and_get_key_v1(self) -> bool:
+        """Retrieve device encryption key (V1/ECB)."""
+        _LOGGER.info("Attempting V1 (ECB) binding to retrieve encryption key.")
+        GENERIC_GREE_DEVICE_KEY: str = "a3K8Bx%2r8Y7#xDh"  # Specific to V1 binding
+        try:
+            # Create cipher with generic key
+            generic_cipher: CipherType = AES.new(
+                GENERIC_GREE_DEVICE_KEY.encode("utf8"), AES.MODE_ECB
+            )
+            # Prepare bind payload
+            bind_payload: str = '{"mac":"' + str(self._mac) + '","t":"bind","uid":0}'
+            padded_data: bytes = self._pad(bind_payload).encode("utf8")
+            encrypted_pack_bytes: bytes = generic_cipher.encrypt(padded_data)
+            pack: str = base64.b64encode(encrypted_pack_bytes).decode("utf-8")
+            json_payload_to_send: str = (
+                '{"cid": "app","i": 1,"pack": "'
+                + pack
+                + '","t":"pack","tcid":"'
+                + str(self._mac)
+                + '","uid": 0}'
+            )
+            # Fetch result using generic cipher
+            result: Dict[str, Any] = self._fetch_result(
+                generic_cipher, json_payload_to_send
+            )
+            new_key_str: str = result["key"]
+            self._encryption_key = new_key_str.encode("utf8")
+            # Update the internal cipher instance
             self._cipher = AES.new(self._encryption_key, AES.MODE_ECB)
-        elif not self._encryption_key:
-            _LOGGER.debug("Encryption key not provided yet.")
-        elif self._encryption_version != 1:
-            _LOGGER.debug(
-                "Encryption version %s uses different cipher setup.",
+            self._is_bound = True
+            _LOGGER.info("V1 (ECB) binding successful. Key: %s", self._encryption_key)
+            return True
+        except Exception as e:
+            _LOGGER.error("Error during V1 (ECB) binding! Error: %s", e, exc_info=True)
+            self._is_bound = False
+            return False
+
+    def _bind_and_get_key_v2(self) -> bool:
+        """Retrieve device encryption key (V2/GCM)."""
+        _LOGGER.info("Attempting V2 (GCM) binding to retrieve encryption key.")
+        # Use the default GCM key from const for binding
+        generic_gcm_key: bytes = const.GCM_DEFAULT_KEY.encode("utf8")
+        try:
+            plaintext: str = (
+                '{"cid":"'
+                + str(self._mac)
+                + '", "mac":"'
+                + str(self._mac)
+                + '","t":"bind","uid":0}'
+            )
+            # Encrypt using generic key
+            pack, tag = self._encrypt_gcm(generic_gcm_key, plaintext)
+            json_payload_to_send: str = (
+                '{"cid": "app","i": 1,"pack": "'
+                + pack
+                + '","t":"pack","tcid":"'
+                + str(self._mac)
+                + '","uid": 0, "tag" : "'
+                + tag
+                + '"}'
+            )
+            # Get GCM cipher using the generic key for fetching the result
+            cipher_gcm: CipherType = self._get_gcm_cipher(generic_gcm_key)
+            result: Dict[str, Any] = self._fetch_result(
+                cipher_gcm, json_payload_to_send
+            )
+            new_key_str: str = result["key"]
+            self._encryption_key = new_key_str.encode("utf8")
+            # No persistent cipher needed for V2, just store the key
+            self._is_bound = True
+            _LOGGER.info("V2 (GCM) binding successful. Key: %s", self._encryption_key)
+            return True
+        except Exception as e:
+            _LOGGER.error("Error during V2 (GCM) binding! Error: %s", e, exc_info=True)
+            self._is_bound = False
+            return False
+
+    def bind_and_get_key(self) -> bool:
+        """Binds to the device and retrieves the encryption key based on version."""
+        if self._is_bound:
+            _LOGGER.debug("API already bound.")
+            return True
+
+        _LOGGER.info(
+            "Attempting to bind and get encryption key (Version: %s)",
+            self._encryption_version,
+        )
+        key_retrieved: bool = False
+        if self._encryption_version == 1:
+            key_retrieved = self._bind_and_get_key_v1()
+        elif self._encryption_version == 2:
+            key_retrieved = self._bind_and_get_key_v2()
+        else:
+            _LOGGER.error(
+                "Unsupported encryption version %s for binding.",
                 self._encryption_version,
             )
+            self._is_bound = False  # Ensure bound is false
+            return False
+
+        if not key_retrieved:
+            _LOGGER.warning("Failed to bind and retrieve encryption key.")
+            self._is_bound = False  # Ensure bound is false
+        else:
+            _LOGGER.info("Successfully bound and retrieved key.")
+            # _is_bound is set within the private methods on success
+
+        return self._is_bound  # Return the final bound state
 
     # Pad helper method to help us get the right string for encrypting
     def _pad(self, s: str) -> str:
@@ -164,9 +280,9 @@ class GreeDeviceApi:
         self, key: bytes
     ) -> CipherType:  # Return type depends on fallback
         """Creates a GCM cipher instance with the specified key."""
-        cipher: CipherType = AES.new(key, AES.MODE_GCM, nonce=GCM_IV)
+        cipher: CipherType = AES.new(key, AES.MODE_GCM, nonce=const.GCM_IV)
         # AES.update is part of the cipher object protocol
-        cipher.update(GCM_ADD)
+        cipher.update(const.GCM_ADD)
         return cipher
 
     def _encrypt_gcm(self, key: bytes, plaintext: str) -> Tuple[str, str]:
@@ -183,6 +299,10 @@ class GreeDeviceApi:
         self, opt_keys: List[str], p_values: List[Any]
     ) -> Optional[Dict[str, Any]]:
         """Sends a command packet to the device."""
+        if not self._is_bound:
+            _LOGGER.error("Cannot send command: API is not bound (key missing).")
+            return None
+
         _LOGGER.debug("Preparing to send command with opt=%s, p=%s", opt_keys, p_values)
 
         # Build the command payload dictionary
@@ -302,8 +422,14 @@ class GreeDeviceApi:
             _LOGGER.error("Unexpected error sending command: %s", e, exc_info=True)
             return None
 
-    def get_status(self, property_names: List[str]) -> Optional[Dict[str, Any]]:
+    def get_status(
+        self, property_names: List[str]
+    ) -> Optional[List[Any]]:  # Changed return type hint
         """Fetches the status of specified properties from the device."""
+        if not self._is_bound:
+            _LOGGER.error("Cannot get status: API is not bound (key missing).")
+            return None
+
         _LOGGER.debug("Preparing to get status for properties: %s", property_names)
 
         # Construct the inner JSON status request payload
@@ -371,16 +497,35 @@ class GreeDeviceApi:
             )
             _LOGGER.debug("Received status response pack: %s", received_json_pack)
 
-            # Extract the 'dat' field which contains the status values
-            if "dat" in received_json_pack:
-                # Assuming 'dat' contains a list or dict, adjust type if needed
-                return received_json_pack["dat"]
-
-            # No else needed after return
-            _LOGGER.error(
-                "'dat' field missing from status response: %s", received_json_pack
-            )
-            return None
+            # Extract the 'dat' field which contains the status values dictionary
+            if "dat" in received_json_pack and isinstance(
+                received_json_pack["dat"], dict
+            ):
+                status_dict: Dict[str, Any] = received_json_pack["dat"]
+                # Return values as a list in the order requested by property_names
+                status_list: List[Any] = []
+                for prop_name in property_names:
+                    if prop_name in status_dict:
+                        status_list.append(status_dict[prop_name])
+                    else:
+                        _LOGGER.warning(
+                            "Property '%s' requested but not found in status response dict: %s",
+                            prop_name,
+                            status_dict,
+                        )
+                        status_list.append(None)  # Append None or handle as appropriate
+                return status_list
+            elif "dat" not in received_json_pack:
+                _LOGGER.error(
+                    "'dat' field missing from status response: %s", received_json_pack
+                )
+                return None
+            else:  # 'dat' exists but is not a dict
+                _LOGGER.error(
+                    "'dat' field in status response is not a dictionary: %s",
+                    received_json_pack["dat"],
+                )
+                return None
         except (socket.timeout, socket.error) as e:
             _LOGGER.error("Socket error getting status: %s", e)
             return None

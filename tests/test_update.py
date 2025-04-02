@@ -10,7 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity  # For type hinting State-like objects
 from unittest.mock import Mock  # To create mock State objects
 
-from custom_components.greev2.climate import FAN_MODES, SWING_MODES, GreeClimate
+from custom_components.greev2.climate import GreeClimate  # Keep entity import
+from custom_components.greev2.const import FAN_MODES, SWING_MODES  # Import constants
 
 # Import type alias from conftest
 from .conftest import GreeClimateFactory
@@ -20,9 +21,9 @@ from .conftest import GreeClimateFactory
 # --- Update Method Tests ---
 
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 async def test_update_calls_get_values(
-    mock_get_values: MagicMock,
+    mock_api_get_status: MagicMock,
     gree_climate_device: GreeClimateFactory,
     mock_hass: HomeAssistant,
 ) -> None:
@@ -31,7 +32,7 @@ async def test_update_calls_get_values(
     device: GreeClimate = gree_climate_device()
     # Mock response values as dict - needed for the method to run
     mock_status_dict: Dict[str, Any] = {key: 0 for key in device._options_to_fetch}
-    mock_get_values.return_value = mock_status_dict
+    mock_api_get_status.return_value = mock_status_dict
 
     # Ensure key exists so async_update() calls _update_sync directly
     device._encryption_key = b"testkey123456789"
@@ -41,19 +42,22 @@ async def test_update_calls_get_values(
     device._has_anti_direct_blow = False
     device._has_light_sensor = False
 
-    # Call the update method
-    await device.async_update()
+    # Ensure the API object thinks it's bound
+    with patch.object(device._api, "_is_bound", True):
+        # Call the update method
+        await device.async_update()
+
     # Note: The original test expected an IndexError from SetAcOptions.
     # If SetAcOptions is now more robust, this test might just pass without error.
     # We only assert that GreeGetValues was called.
 
     # Assertion: Only check if GreeGetValues was called
-    mock_get_values.assert_called_once_with(device._options_to_fetch)
+    mock_api_get_status.assert_called_once_with(device._options_to_fetch)
 
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 async def test_update_success_full(
-    mock_get_values: MagicMock,
+    mock_api_get_status: MagicMock,
     gree_climate_device: GreeClimateFactory,
     mock_hass: HomeAssistant,
 ) -> None:
@@ -77,7 +81,7 @@ async def test_update_success_full(
     mock_status_list: List[Any] = [
         mock_status_dict.get(key) for key in device._options_to_fetch
     ]
-    mock_get_values.return_value = mock_status_list
+    mock_api_get_status.return_value = mock_status_list
 
     # Ensure key exists so async_update() calls _update_sync directly
     device._encryption_key = b"testkey123456789"
@@ -87,11 +91,13 @@ async def test_update_success_full(
     device._has_anti_direct_blow = False
     device._has_light_sensor = False
 
-    # Call the update method
-    await device.async_update()
+    # Ensure the API object thinks it's bound
+    with patch.object(device._api, "_is_bound", True):
+        # Call the update method
+        await device.async_update()
 
     # Assertions
-    mock_get_values.assert_called_once_with(device._options_to_fetch)
+    mock_api_get_status.assert_called_once_with(device._options_to_fetch)
     assert device.available is True
     assert device.hvac_mode == HVACMode.COOL
     assert device.target_temperature == 24.0  # Should be float
@@ -102,9 +108,9 @@ async def test_update_success_full(
     assert device.current_temperature is None  # Assuming no temp sensor
 
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 async def test_update_timeout(
-    mock_get_values: MagicMock,
+    mock_api_get_status: MagicMock,
     gree_climate_device: GreeClimateFactory,
     mock_hass: HomeAssistant,
 ) -> None:
@@ -112,7 +118,7 @@ async def test_update_timeout(
     # Get device instance
     device: GreeClimate = gree_climate_device()
     # Simulate communication error by returning None (as API does)
-    mock_get_values.return_value = None
+    mock_api_get_status.return_value = None
 
     # Ensure device starts online and feature checks are skipped
     device._device_online = True
@@ -125,11 +131,13 @@ async def test_update_timeout(
     device._encryption_key = b"testkey123456789"
     device._api._cipher = MagicMock()
 
-    # Call update - expecting SyncState to handle None return
-    await device.async_update()
+    # Ensure the API object thinks it's bound
+    with patch.object(device._api, "_is_bound", True):
+        # Call update - expecting SyncState to handle None return
+        await device.async_update()
 
     # Assertions
-    mock_get_values.assert_called_once_with(device._options_to_fetch)
+    mock_api_get_status.assert_called_once_with(device._options_to_fetch)
     assert device.available is False
     assert device._device_online is False
 
@@ -139,9 +147,9 @@ async def test_update_timeout(
     # raises=IndexError, # Might raise KeyError or other error now
     strict=True,
 )
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 async def test_update_invalid_response(
-    mock_get_values: MagicMock,
+    mock_api_get_status: MagicMock,
     gree_climate_device: GreeClimateFactory,
     mock_hass: HomeAssistant,
     caplog: LogCaptureFixture,
@@ -151,7 +159,7 @@ async def test_update_invalid_response(
     device: GreeClimate = gree_climate_device()
     # Simulate an invalid response (dictionary with missing keys)
     invalid_response_dict: Dict[str, Any] = {"Pow": 1, "Mod": 1}  # Missing many keys
-    mock_get_values.return_value = invalid_response_dict
+    mock_api_get_status.return_value = invalid_response_dict
     expected_options_len: int = len(device._options_to_fetch)
 
     # Store initial state for comparison
@@ -171,7 +179,7 @@ async def test_update_invalid_response(
     await device.async_update()
 
     # Assertions
-    mock_get_values.assert_called_once_with(device._options_to_fetch)
+    mock_api_get_status.assert_called_once_with(device._options_to_fetch)
     assert device.available is True  # Communication succeeded, parsing might fail
     # Check if state changed - depends on SetAcOptions robustness
     # assert device._acOptions == initial_ac_options
@@ -181,9 +189,9 @@ async def test_update_invalid_response(
     )
 
 
-@patch("custom_components.greev2.climate.GreeClimate.gree_get_values")
+@patch("custom_components.greev2.device_api.GreeDeviceApi.get_status")
 async def test_update_sets_availability(
-    mock_get_values: MagicMock,
+    mock_api_get_status: MagicMock,
     gree_climate_device: GreeClimateFactory,
     mock_hass: HomeAssistant,
 ) -> None:
@@ -205,39 +213,49 @@ async def test_update_sets_availability(
     # --- Test 1: Success Case ---
     device._device_online = False
     device._online_attempts = 0
-    mock_get_values.return_value = mock_status_list  # Use list for success
-    mock_get_values.side_effect = None  # Clear any previous side effect
+    mock_api_get_status.return_value = mock_status_list  # Use list for success
+    mock_api_get_status.side_effect = None  # Clear any previous side effect
 
-    await device.async_update()
+    # Ensure the API object thinks it's bound
+    with patch.object(device._api, "_is_bound", True):
+        await device.async_update()
 
     assert device.available is True
     assert device._device_online is True
-    assert mock_get_values.call_count == 1
+    assert mock_api_get_status.call_count == 1
 
     # --- Test 2: Failure Case (GreeGetValues returns None) ---
     device._device_online = True
     device._online_attempts = 0
     device._max_online_attempts = 1  # Fail after one attempt
-    mock_get_values.return_value = None  # Simulate API failure
-    mock_get_values.side_effect = None
+    mock_api_get_status.return_value = None  # Simulate API failure
+    mock_api_get_status.side_effect = None
 
-    await device.async_update()
+    # Ensure the API object thinks it's bound
+    with patch.object(device._api, "_is_bound", True):
+        await device.async_update()
 
     assert device.available is False
     assert device._device_online is False
-    assert mock_get_values.call_count == 2  # Called once in success, once in failure
+    assert (
+        mock_api_get_status.call_count == 2
+    )  # Called once in success, once in failure
 
     # --- Test 3: Recovery Case ---
     device._device_online = False
     device._online_attempts = 0  # Reset attempts
-    mock_get_values.return_value = mock_status_list  # Set back to success using list
-    mock_get_values.side_effect = None  # Clear side effect
+    mock_api_get_status.return_value = (
+        mock_status_list  # Set back to success using list
+    )
+    mock_api_get_status.side_effect = None  # Clear side effect
 
-    await device.async_update()
+    # Ensure the API object thinks it's bound
+    with patch.object(device._api, "_is_bound", True):
+        await device.async_update()
 
     assert device.available is True
     assert device._device_online is True
-    assert mock_get_values.call_count == 3  # Called again for recovery
+    assert mock_api_get_status.call_count == 3  # Called again for recovery
 
 
 # --- GCM Specific Tests ---

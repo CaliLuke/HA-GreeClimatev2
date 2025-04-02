@@ -21,14 +21,16 @@ from homeassistant.components.climate import (
     ClimateEntityFeature,
     HVACMode,
 )
+
+# Import HA constants used directly (avoiding CONF_ constants here)
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     ATTR_UNIT_OF_MEASUREMENT,
-    CONF_HOST,
-    CONF_MAC,
-    CONF_NAME,
-    CONF_PORT,
-    CONF_TIMEOUT,
+    CONF_HOST,  # Keep original HA const for schema validation if needed elsewhere
+    CONF_MAC,  # Keep original HA const for schema validation if needed elsewhere
+    CONF_NAME,  # Keep original HA const for schema validation if needed elsewhere
+    CONF_PORT,  # Keep original HA const for schema validation if needed elsewhere
+    CONF_TIMEOUT,  # Keep original HA const for schema validation if needed elsewhere
     STATE_OFF,
     STATE_ON,
     STATE_UNKNOWN,
@@ -44,6 +46,8 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 # Local imports
 from .device_api import GreeDeviceApi
+from . import const
+
 
 # Simplify CipherType to Any for broader compatibility
 CipherType = Any
@@ -54,128 +58,38 @@ REQUIREMENTS: List[str] = [
 
 _LOGGER = logging.getLogger(__name__)
 
-SUPPORT_FLAGS: ClimateEntityFeature = (
-    ClimateEntityFeature.TARGET_TEMPERATURE
-    | ClimateEntityFeature.FAN_MODE
-    | ClimateEntityFeature.SWING_MODE
-    | ClimateEntityFeature.TURN_ON
-    | ClimateEntityFeature.TURN_OFF
-)
-
-DEFAULT_NAME: str = "Gree Climate"
-
-CONF_TARGET_TEMP_STEP: str = "target_temp_step"
-CONF_TEMP_SENSOR: str = "temp_sensor"
-CONF_LIGHTS: str = "lights"
-CONF_XFAN: str = "xfan"
-CONF_HEALTH: str = "health"
-CONF_POWERSAVE: str = "powersave"
-CONF_SLEEP: str = "sleep"
-CONF_EIGHTDEGHEAT: str = "eightdegheat"
-CONF_AIR: str = "air"
-CONF_ENCRYPTION_KEY: str = "encryption_key"
-CONF_UID: str = "uid"
-CONF_AUTO_XFAN: str = "auto_xfan"
-CONF_AUTO_LIGHT: str = "auto_light"
-CONF_TARGET_TEMP: str = "target_temp"
-CONF_HORIZONTAL_SWING: str = "horizontal_swing"
-CONF_ANTI_DIRECT_BLOW: str = "anti_direct_blow"
-CONF_ENCRYPTION_VERSION: str = "encryption_version"
-CONF_DISABLE_AVAILABLE_CHECK: str = "disable_available_check"
-CONF_MAX_ONLINE_ATTEMPTS: str = "max_online_attempts"
-CONF_LIGHT_SENSOR: str = "light_sensor"
-
-DEFAULT_PORT: int = 7000
-DEFAULT_TIMEOUT: int = 10
-DEFAULT_TARGET_TEMP_STEP: float = 1.0  # Use float for consistency
-
-# from the remote control and gree app
-MIN_TEMP: int = 16
-MAX_TEMP: int = 30
-
-# update() interval
-SCAN_INTERVAL: timedelta = timedelta(seconds=60)
-
-TEMP_OFFSET: int = 40
-
-# fixed values in gree mode lists
-HVAC_MODES: List[HVACMode] = [
-    HVACMode.AUTO,
-    HVACMode.COOL,
-    HVACMode.DRY,
-    HVACMode.FAN_ONLY,
-    HVACMode.HEAT,
-    HVACMode.OFF,
-]
-
-FAN_MODES: List[str] = [
-    "Auto",
-    "Low",
-    "Medium-Low",
-    "Medium",
-    "Medium-High",
-    "High",
-    "Turbo",
-    "Quiet",
-]
-SWING_MODES: List[str] = [
-    "Default",
-    "Swing in full range",
-    "Fixed in the upmost position",
-    "Fixed in the middle-up position",
-    "Fixed in the middle position",
-    "Fixed in the middle-low position",
-    "Fixed in the lowest position",
-    "Swing in the downmost region",
-    "Swing in the middle-low region",
-    "Swing in the middle region",
-    "Swing in the middle-up region",
-    "Swing in the upmost region",
-]
-PRESET_MODES: List[str] = [
-    "Default",
-    "Full swing",
-    "Fixed in the leftmost position",
-    "Fixed in the middle-left position",
-    "Fixed in the middle postion",  # Typo? "position"
-    "Fixed in the middle-right position",
-    "Fixed in the rightmost position",
-]
-
-# GCM Constants (Placeholder - Values depend on actual Gree protocol reverse engineering)
-GCM_DEFAULT_KEY: str = "{yxAHAY_Lm6pbC/<"  # Default key for GCM binding based on logs
-GCM_IV: bytes = b"\x00" * 12  # Initialization Vector (often 12 bytes for GCM)
-GCM_ADD: bytes = b""  # Additional Authenticated Data (if used by protocol)
 
 PLATFORM_SCHEMA: vol.Schema = CLIMATE_PLATFORM_SCHEMA.extend(  # Use voluptuous.Schema
     {
-        vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-        vol.Required(CONF_HOST): cv.string,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.positive_int,
-        vol.Required(CONF_MAC): cv.string,
-        vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): cv.positive_int,
+        vol.Optional(const.CONF_NAME, default=const.DEFAULT_NAME): cv.string,
+        vol.Required(const.CONF_HOST): cv.string,
+        vol.Required(const.CONF_PORT, default=const.DEFAULT_PORT): cv.positive_int,
+        vol.Required(const.CONF_MAC): cv.string,
         vol.Optional(
-            CONF_TARGET_TEMP_STEP, default=DEFAULT_TARGET_TEMP_STEP
+            const.CONF_TIMEOUT, default=const.DEFAULT_TIMEOUT
+        ): cv.positive_int,
+        vol.Optional(
+            const.CONF_TARGET_TEMP_STEP, default=const.DEFAULT_TARGET_TEMP_STEP
         ): vol.Coerce(float),
-        vol.Optional(CONF_TEMP_SENSOR): cv.entity_id,
-        vol.Optional(CONF_LIGHTS): cv.entity_id,
-        vol.Optional(CONF_XFAN): cv.entity_id,
-        vol.Optional(CONF_HEALTH): cv.entity_id,
-        vol.Optional(CONF_POWERSAVE): cv.entity_id,
-        vol.Optional(CONF_SLEEP): cv.entity_id,
-        vol.Optional(CONF_EIGHTDEGHEAT): cv.entity_id,
-        vol.Optional(CONF_AIR): cv.entity_id,
-        vol.Optional(CONF_ENCRYPTION_KEY): cv.string,
-        vol.Optional(CONF_UID): cv.positive_int,
-        vol.Optional(CONF_AUTO_XFAN): cv.entity_id,
-        vol.Optional(CONF_AUTO_LIGHT): cv.entity_id,
-        vol.Optional(CONF_TARGET_TEMP): cv.entity_id,
-        vol.Optional(CONF_ENCRYPTION_VERSION, default=1): cv.positive_int,
-        vol.Optional(CONF_HORIZONTAL_SWING, default=False): cv.boolean,
-        vol.Optional(CONF_ANTI_DIRECT_BLOW): cv.entity_id,
-        vol.Optional(CONF_DISABLE_AVAILABLE_CHECK, default=False): cv.boolean,
-        vol.Optional(CONF_MAX_ONLINE_ATTEMPTS, default=3): cv.positive_int,
-        vol.Optional(CONF_LIGHT_SENSOR): cv.entity_id,
+        vol.Optional(const.CONF_TEMP_SENSOR): cv.entity_id,
+        vol.Optional(const.CONF_LIGHTS): cv.entity_id,
+        vol.Optional(const.CONF_XFAN): cv.entity_id,
+        vol.Optional(const.CONF_HEALTH): cv.entity_id,
+        vol.Optional(const.CONF_POWERSAVE): cv.entity_id,
+        vol.Optional(const.CONF_SLEEP): cv.entity_id,
+        vol.Optional(const.CONF_EIGHTDEGHEAT): cv.entity_id,
+        vol.Optional(const.CONF_AIR): cv.entity_id,
+        vol.Optional(const.CONF_ENCRYPTION_KEY): cv.string,
+        vol.Optional(const.CONF_UID): cv.positive_int,
+        vol.Optional(const.CONF_AUTO_XFAN): cv.entity_id,
+        vol.Optional(const.CONF_AUTO_LIGHT): cv.entity_id,
+        vol.Optional(const.CONF_TARGET_TEMP): cv.entity_id,
+        vol.Optional(const.CONF_ENCRYPTION_VERSION, default=1): cv.positive_int,
+        vol.Optional(const.CONF_HORIZONTAL_SWING, default=False): cv.boolean,
+        vol.Optional(const.CONF_ANTI_DIRECT_BLOW): cv.entity_id,
+        vol.Optional(const.CONF_DISABLE_AVAILABLE_CHECK, default=False): cv.boolean,
+        vol.Optional(const.CONF_MAX_ONLINE_ATTEMPTS, default=3): cv.positive_int,
+        vol.Optional(const.CONF_LIGHT_SENSOR): cv.entity_id,
     }
 )
 
@@ -191,39 +105,41 @@ async def async_setup_platform(
     """Set up the Gree Climate platform."""
     # discovery_info is typically unused in modern YAML setup, but kept for signature compatibility
     _LOGGER.info("Setting up Gree climate platform")
-    name: str = config[CONF_NAME]  # Use direct access after schema validation
-    ip_addr: str = config[CONF_HOST]
-    port: int = config[CONF_PORT]
-    mac_addr_str: str = config[CONF_MAC]
+    name: str = config[const.CONF_NAME]  # Use direct access after schema validation
+    ip_addr: str = config[const.CONF_HOST]
+    port: int = config[const.CONF_PORT]
+    mac_addr_str: str = config[const.CONF_MAC]
     mac_addr: bytes = mac_addr_str.encode().replace(b":", b"")
-    timeout: int = config[CONF_TIMEOUT]
+    timeout: int = config[const.CONF_TIMEOUT]
 
-    target_temp_step: float = config[CONF_TARGET_TEMP_STEP]
-    temp_sensor_entity_id: Optional[str] = config.get(CONF_TEMP_SENSOR)
-    lights_entity_id: Optional[str] = config.get(CONF_LIGHTS)
-    xfan_entity_id: Optional[str] = config.get(CONF_XFAN)
-    health_entity_id: Optional[str] = config.get(CONF_HEALTH)
-    powersave_entity_id: Optional[str] = config.get(CONF_POWERSAVE)
-    sleep_entity_id: Optional[str] = config.get(CONF_SLEEP)
-    eightdegheat_entity_id: Optional[str] = config.get(CONF_EIGHTDEGHEAT)
-    air_entity_id: Optional[str] = config.get(CONF_AIR)
-    target_temp_entity_id: Optional[str] = config.get(CONF_TARGET_TEMP)
-    hvac_modes: List[HVACMode] = HVAC_MODES  # Use constant
-    fan_modes: List[str] = FAN_MODES  # Use constant
-    swing_modes: List[str] = SWING_MODES  # Use constant
-    preset_modes: List[str] = PRESET_MODES  # Use constant
-    encryption_key: Optional[str] = config.get(CONF_ENCRYPTION_KEY)
-    uid: Optional[int] = config.get(CONF_UID)
-    auto_xfan_entity_id: Optional[str] = config.get(CONF_AUTO_XFAN)
-    auto_light_entity_id: Optional[str] = config.get(CONF_AUTO_LIGHT)
-    horizontal_swing: bool = config[CONF_HORIZONTAL_SWING]  # Use direct access
-    anti_direct_blow_entity_id: Optional[str] = config.get(CONF_ANTI_DIRECT_BLOW)
-    light_sensor_entity_id: Optional[str] = config.get(CONF_LIGHT_SENSOR)
-    encryption_version: int = config[CONF_ENCRYPTION_VERSION]  # Use direct access
+    target_temp_step: float = config[const.CONF_TARGET_TEMP_STEP]
+    temp_sensor_entity_id: Optional[str] = config.get(const.CONF_TEMP_SENSOR)
+    lights_entity_id: Optional[str] = config.get(const.CONF_LIGHTS)
+    xfan_entity_id: Optional[str] = config.get(const.CONF_XFAN)
+    health_entity_id: Optional[str] = config.get(const.CONF_HEALTH)
+    powersave_entity_id: Optional[str] = config.get(const.CONF_POWERSAVE)
+    sleep_entity_id: Optional[str] = config.get(const.CONF_SLEEP)
+    eightdegheat_entity_id: Optional[str] = config.get(const.CONF_EIGHTDEGHEAT)
+    air_entity_id: Optional[str] = config.get(const.CONF_AIR)
+    target_temp_entity_id: Optional[str] = config.get(const.CONF_TARGET_TEMP)
+    hvac_modes: List[HVACMode] = const.HVAC_MODES  # Use constant
+    fan_modes: List[str] = const.FAN_MODES  # Use constant
+    swing_modes: List[str] = const.SWING_MODES  # Use constant
+    preset_modes: List[str] = const.PRESET_MODES  # Use constant
+    encryption_key: Optional[str] = config.get(const.CONF_ENCRYPTION_KEY)
+    uid: Optional[int] = config.get(const.CONF_UID)
+    auto_xfan_entity_id: Optional[str] = config.get(const.CONF_AUTO_XFAN)
+    auto_light_entity_id: Optional[str] = config.get(const.CONF_AUTO_LIGHT)
+    horizontal_swing: bool = config[const.CONF_HORIZONTAL_SWING]  # Use direct access
+    anti_direct_blow_entity_id: Optional[str] = config.get(const.CONF_ANTI_DIRECT_BLOW)
+    light_sensor_entity_id: Optional[str] = config.get(const.CONF_LIGHT_SENSOR)
+    encryption_version: int = config[const.CONF_ENCRYPTION_VERSION]  # Use direct access
     disable_available_check: bool = config[
-        CONF_DISABLE_AVAILABLE_CHECK
+        const.CONF_DISABLE_AVAILABLE_CHECK
     ]  # Use direct access
-    max_online_attempts: int = config[CONF_MAX_ONLINE_ATTEMPTS]  # Use direct access
+    max_online_attempts: int = config[
+        const.CONF_MAX_ONLINE_ATTEMPTS
+    ]  # Use direct access
 
     _LOGGER.info("Adding Gree climate device to hass")
 
@@ -278,9 +194,9 @@ class GreeClimate(ClimateEntity):
     _attr_swing_modes: List[str]
     _attr_preset_modes: Optional[List[str]]  # Can be None if horizontal_swing is false
     _attr_target_temperature_step: float
-    _attr_min_temp: float = float(MIN_TEMP)
-    _attr_max_temp: float = float(MAX_TEMP)
-    _attr_supported_features: ClimateEntityFeature = SUPPORT_FLAGS  # Base flags
+    _attr_min_temp: float = float(const.MIN_TEMP)
+    _attr_max_temp: float = float(const.MAX_TEMP)
+    _attr_supported_features: ClimateEntityFeature = const.SUPPORT_FLAGS  # Base flags
 
     # Internal state
     _ip_addr: str
@@ -641,121 +557,6 @@ class GreeClimate(ClimateEntity):
         else:
             self._auto_xfan = False
 
-    def get_device_key(self) -> bool:
-        """Retrieve device encryption key (V1/ECB)."""
-        _LOGGER.info("Retrieving HVAC encryption key (ECB)")
-        GENERIC_GREE_DEVICE_KEY: str = "a3K8Bx%2r8Y7#xDh"
-        try:
-            # Create cipher with generic key
-            generic_cipher: CipherType = AES.new(
-                GENERIC_GREE_DEVICE_KEY.encode("utf8"), AES.MODE_ECB
-            )
-            # Call the API's pad method
-            bind_payload: str = (
-                '{"mac":"' + str(self._mac_addr) + '","t":"bind","uid":0}'
-            )
-            padded_data: bytes = self._api._pad(bind_payload).encode("utf8")
-            encrypted_pack_bytes: bytes = generic_cipher.encrypt(padded_data)
-            pack: str = base64.b64encode(encrypted_pack_bytes).decode("utf-8")
-            json_payload_to_send: str = (
-                '{"cid": "app","i": 1,"pack": "'
-                + pack
-                + '","t":"pack","tcid":"'
-                + str(self._mac_addr)
-                + '","uid": 0}'
-            )
-            # Call the API's fetch method
-            result: Dict[str, Any] = self._api._fetch_result(
-                generic_cipher, json_payload_to_send
-            )
-            new_key_str: str = result["key"]
-            self._encryption_key = new_key_str.encode("utf8")
-            # Update the API instance with the new key
-            self._api.update_encryption_key(self._encryption_key)
-        except Exception as e:  # Catch broader exceptions during binding
-            _LOGGER.error(
-                "Error getting device encryption key (ECB)! Error: %s", e, exc_info=True
-            )
-            self._device_online = False
-            self._online_attempts = 0
-            return False
-        # No else needed after return
-        _LOGGER.info("Fetched device encrytion key (ECB): %s", self._encryption_key)
-        # self.CIPHER = AES.new(self._encryption_key, AES.MODE_ECB) # Deprecated
-        self._device_online = True
-        self._online_attempts = 0
-        return True
-
-    def get_device_key_gcm(self) -> bool:
-        """Retrieve device encryption key (V2/GCM)."""
-        _LOGGER.info("Retrieving HVAC encryption key (GCM)")
-        GENERIC_GREE_DEVICE_KEY_GCM: bytes = GCM_DEFAULT_KEY.encode(
-            "utf8"
-        )  # Use constant
-        try:
-            plaintext: str = (
-                '{"cid":"'
-                + str(self._mac_addr)
-                + '", "mac":"'
-                + str(self._mac_addr)
-                + '","t":"bind","uid":0}'
-            )
-            # Call API's encrypt method
-            pack, tag = self._api._encrypt_gcm(GENERIC_GREE_DEVICE_KEY_GCM, plaintext)
-            json_payload_to_send: str = (
-                '{"cid": "app","i": 1,"pack": "'
-                + pack
-                + '","t":"pack","tcid":"'
-                + str(self._mac_addr)
-                + '","uid": 0, "tag" : "'
-                + tag
-                + '"}'
-            )
-            # Call the API's fetch method, need to get the correct cipher
-            cipher_gcm: CipherType = self._api._get_gcm_cipher(
-                GENERIC_GREE_DEVICE_KEY_GCM
-            )
-            result: Dict[str, Any] = self._api._fetch_result(
-                cipher_gcm, json_payload_to_send
-            )
-            new_key_str: str = result["key"]
-            self._encryption_key = new_key_str.encode("utf8")
-            # Update the API instance with the newly fetched key
-            self._api.update_encryption_key(self._encryption_key)
-        except Exception as e:  # Catch broader exceptions
-            _LOGGER.error(
-                "Error getting device encryption key (GCM)! Error: %s", e, exc_info=True
-            )
-            self._device_online = False
-            self._online_attempts = 0
-            return False
-        # No else needed after return
-        _LOGGER.info("Fetched device encrytion key (GCM): %s", self._encryption_key)
-        self._device_online = True
-        self._online_attempts = 0
-        return True
-
-    def gree_get_values(self, property_names: List[str]) -> Optional[Dict[str, Any]]:
-        """Get status values from the device using the API."""
-        _LOGGER.debug("Calling API get_status for properties: %s", property_names)
-        try:
-            # Delegate fetching status to the API method
-            status_data: Optional[Dict[str, Any]] = self._api.get_status(property_names)
-
-            if status_data is not None:
-                _LOGGER.debug(
-                    "Successfully received status data via API: %s", status_data
-                )
-                return status_data
-            # No else needed after return
-            _LOGGER.error("API get_status returned None, indicating failure.")
-            # Return None to indicate failure more clearly
-            return None
-        except Exception as e:
-            _LOGGER.error("Error calling self._api.get_status: %s", e, exc_info=True)
-            # Return None on error
-            return None
-
     def set_ac_options(
         self,
         ac_options: Dict[str, Optional[int]],
@@ -814,76 +615,6 @@ class GreeClimate(ClimateEntity):
             # Return unchanged options if arguments are invalid
         return ac_options
 
-    def send_state_to_ac(
-        self,
-    ) -> Optional[Dict[str, Any]]:  # Removed unused 'timeout' argument
-        """Send the current state (_ac_options) to the AC unit."""
-        # Define default options
-        # Note: timeout is handled by the self._api instance's timeout setting
-        opt_keys: List[str] = [
-            "Pow",
-            "Mod",
-            "SetTem",
-            "WdSpd",
-            "Air",
-            "Blo",
-            "Health",
-            "SwhSlp",
-            "Lig",
-            "SwingLfRig",
-            "SwUpDn",
-            "Quiet",
-            "Tur",
-            "StHt",
-            "TemUn",
-            "HeatCoolType",
-            "TemRec",
-            "SvSt",
-            "SlpMod",
-        ]
-
-        # Add optional features if enabled
-        if self._has_anti_direct_blow:
-            opt_keys.append("AntiDirectBlow")
-        if self._has_light_sensor:
-            opt_keys.append("LigSen")  # Check actual key name used by device
-
-        # Get the corresponding values from _ac_options
-        # Note: Ensure the order matches opt_keys precisely!
-        # Handle potential None values gracefully if needed by API
-        p_values: List[Any] = [self._ac_options.get(key) for key in opt_keys]
-
-        _LOGGER.debug(
-            "Calling API send_command with opt_keys: %s, p_values: %s",
-            opt_keys,
-            p_values,
-        )
-
-        # Call the API method to handle sending the command
-        try:
-            # Pass opt_keys and the corresponding values
-            # The API method now handles JSON construction, encryption, and network I/O
-            received_json_payload: Optional[Dict[str, Any]] = self._api.send_command(
-                opt_keys, p_values
-            )
-
-            if received_json_payload:
-                _LOGGER.debug(
-                    "Successfully sent command via API. Response pack: %s",
-                    received_json_payload,
-                )
-                # Potentially process the response here if needed by GreeClimate
-                # For now, just logging success.
-                return received_json_payload  # Return the response pack
-            # No else needed after return
-            _LOGGER.error(
-                "API send_command returned None or False, indicating failure."
-            )
-            return None
-        except Exception as e:
-            _LOGGER.error("Error calling self._api.send_command: %s", e, exc_info=True)
-            return None
-
     def update_ha_target_temperature(self) -> None:
         """Update HA target temperature based on internal state."""
         # Sync set temperature to HA. If 8℃ heating is active, set HA temp to 8℃
@@ -905,7 +636,7 @@ class GreeClimate(ClimateEntity):
                     attr: Dict[str, Any] = dict(
                         target_temp_state.attributes
                     )  # Get mutable copy
-                    if MIN_TEMP <= self._target_temperature <= MAX_TEMP:
+                    if const.MIN_TEMP <= self._target_temperature <= const.MAX_TEMP:
                         self.hass.states.async_set(
                             self._target_temp_entity_id,
                             str(
@@ -1134,11 +865,13 @@ class GreeClimate(ClimateEntity):
             if self._has_temp_sensor:
                 temp_sen = self._ac_options.get("TemSen")
                 if temp_sen is not None:
-                    # Apply offset logic (TEMP_OFFSET = 40)
+                    # Apply offset logic (const.TEMP_OFFSET = 40)
                     # NOTE: Offset logic might be device-specific and needs verification.
                     # NOTE: Assumes internal sensor reports Celsius; add conversion if TemUn indicates Fahrenheit.
                     temp_val_before_offset = (
-                        temp_sen if temp_sen <= TEMP_OFFSET else temp_sen - TEMP_OFFSET
+                        temp_sen
+                        if temp_sen <= const.TEMP_OFFSET
+                        else temp_sen - const.TEMP_OFFSET
                     )
                     temp = float(temp_val_before_offset)
                     # Use the HA unit system - assumes Celsius from device
@@ -1184,10 +917,13 @@ class GreeClimate(ClimateEntity):
         if self._has_temp_sensor is None and not self._temp_sensor_entity_id:
             _LOGGER.debug("Attempting to check for built-in temperature sensor")
             try:
-                temp_sensor_check = self.gree_get_values(
-                    ["TemSen"]
-                )  # Returns dict or None
-                if temp_sensor_check is not None and "TemSen" in temp_sensor_check:
+                # Use direct API call. get_status returns the list/dict directly.
+                # Assuming single item returns a list like [value] or None on error.
+                temp_sensor_check_result = self._api.get_status(["TemSen"])
+                # Check if result is not None and potentially if it's a list with a value
+                if (
+                    temp_sensor_check_result is not None
+                ):  # Simplified check, assumes success means feature exists
                     self._has_temp_sensor = True
                     # Add TemSen to fetch list if not already present
                     if "TemSen" not in self._options_to_fetch:
@@ -1209,8 +945,9 @@ class GreeClimate(ClimateEntity):
         if self._has_anti_direct_blow is None and self._anti_direct_blow_entity_id:
             _LOGGER.debug("Attempting to check for anti-direct blow feature")
             try:
-                adb_check = self.gree_get_values(["AntiDirectBlow"])
-                if adb_check is not None and "AntiDirectBlow" in adb_check:
+                # Use direct API call.
+                adb_check_result = self._api.get_status(["AntiDirectBlow"])
+                if adb_check_result is not None:  # Simplified check
                     self._has_anti_direct_blow = True
                     if "AntiDirectBlow" not in self._options_to_fetch:
                         self._options_to_fetch.append("AntiDirectBlow")
@@ -1229,10 +966,9 @@ class GreeClimate(ClimateEntity):
         if self._has_light_sensor is None and self._light_sensor_entity_id:
             _LOGGER.debug("Attempting to check for built-in light sensor")
             try:
-                light_sensor_check = self.gree_get_values(
-                    ["LigSen"]
-                )  # Check actual key
-                if light_sensor_check is not None and "LigSen" in light_sensor_check:
+                # Use direct API call.
+                light_sensor_check_result = self._api.get_status(["LigSen"])
+                if light_sensor_check_result is not None:  # Simplified check
                     self._has_light_sensor = True
                     if "LigSen" not in self._options_to_fetch:
                         self._options_to_fetch.append("LigSen")
@@ -1249,29 +985,33 @@ class GreeClimate(ClimateEntity):
         # --- Fetch Current State ---
         # Removed unused variable: currentValues_list
         try:
-            # Fetch data from the device. Based on logs and behavior, gree_get_values
-            # likely returns the raw list from the API's 'dat' field.
-            raw_api_result = self.gree_get_values(self._options_to_fetch)
+            # Fetch data from the device using the direct API call.
+            # get_status should return the list of values directly or None on error.
+            received_data_list = self._api.get_status(self._options_to_fetch)
 
             # Validate the received data
-            if not isinstance(raw_api_result, list):
+            if received_data_list is None:
+                _LOGGER.warning("Failed to get status from device (API returned None).")
+                # Raise an exception to trigger the offline handling logic below
+                raise ConnectionError("API get_status returned None")
+
+            if not isinstance(received_data_list, list):
                 _LOGGER.error(
-                    "gree_get_values did not return a list as expected. Got: %s",
-                    type(raw_api_result),
+                    "API get_status did not return a list as expected. Got: %s",
+                    type(received_data_list),
                 )
                 raise ConnectionError("API returned unexpected data type.")
 
-            if len(raw_api_result) != len(self._options_to_fetch):
+            if len(received_data_list) != len(self._options_to_fetch):
                 _LOGGER.error(
                     "API list length mismatch. Expected %d, got %d: %s",
                     len(self._options_to_fetch),
-                    len(raw_api_result),
-                    raw_api_result,
+                    len(received_data_list),  # Corrected variable name here
+                    received_data_list,  # Corrected variable name here
                 )
                 raise ConnectionError("API returned list with unexpected length.")
 
-            # If validation passes, raw_api_result is the list we need
-            received_data_list: List[Any] = raw_api_result
+            # Validation passed, received_data_list contains the status list
             _LOGGER.debug(
                 "Successfully received status list from API: %s", received_data_list
             )
@@ -1313,9 +1053,35 @@ class GreeClimate(ClimateEntity):
             self._ac_options = self.set_ac_options(self._ac_options, ac_options)
 
         # --- Send Commands (if needed) ---
-        # If not the first (boot) run AND commands were passed, update state towards the HVAC
+        # If not the first (boot) run AND commands were passed (ac_options is not empty), update state towards the HVAC
         if not self._first_time_run and ac_options:
-            self.send_state_to_ac()  # Removed timeout argument
+            # Replicate logic from removed send_state_to_ac
+            opt_keys: List[str] = list(
+                ac_options.keys()
+            )  # Send only the keys provided in ac_options
+            p_values: List[Any] = list(ac_options.values())
+
+            _LOGGER.debug(
+                "Calling API send_command directly with opt_keys: %s, p_values: %s",
+                opt_keys,
+                p_values,
+            )
+            try:
+                # Call the API method directly
+                response = self._api.send_command(opt_keys, p_values)
+                if response:
+                    _LOGGER.debug(
+                        "Successfully sent command via API. Response: %s", response
+                    )
+                    # Optionally update internal state based on response if needed
+                    # For now, just log success. The next update cycle will fetch the actual state.
+                else:
+                    _LOGGER.error("API send_command failed or returned no response.")
+            except Exception as e:
+                _LOGGER.error(
+                    "Error calling self._api.send_command: %s", e, exc_info=True
+                )
+
         elif self._first_time_run:
             # loop used once for Gree Climate initialisation only
             self._first_time_run = False
@@ -1629,7 +1395,7 @@ class GreeClimate(ClimateEntity):
             # Check if device is powered on
             if self._ac_options.get("Pow") != 0:
                 temp_int = int(temperature)  # Gree uses integer temps
-                if MIN_TEMP <= temp_int <= MAX_TEMP:
+                if const.MIN_TEMP <= temp_int <= const.MAX_TEMP:
                     _LOGGER.debug("sync_state with SetTem=%d", temp_int)
                     self.sync_state({"SetTem": temp_int})
                     # No need to schedule update, sync_state handles it
@@ -1637,8 +1403,8 @@ class GreeClimate(ClimateEntity):
                     _LOGGER.warning(
                         "Requested temperature %s is out of range (%d-%d)",
                         temperature,
-                        MIN_TEMP,
-                        MAX_TEMP,
+                        const.MIN_TEMP,
+                        const.MAX_TEMP,
                     )
             else:
                 _LOGGER.warning("Cannot set temperature when device is off.")
@@ -1771,33 +1537,55 @@ class GreeClimate(ClimateEntity):
         await self.hass.async_add_executor_job(self._update_sync)
 
     def _update_sync(self) -> None:  # New synchronous wrapper for blocking code
-        """Synchronous part of update logic."""
-        if not self._encryption_key:
-            key_retrieved: bool = False
-            if self.encryption_version == 1:
-                key_retrieved = self.get_device_key()
-            elif self.encryption_version == 2:
-                key_retrieved = self.get_device_key_gcm()
-            else:
-                _LOGGER.error(
-                    "Encryption version %s is not implemented for key retrieval.",
-                    self.encryption_version,
-                )
-                # Mark as unavailable if key cannot be retrieved due to version
+        """Synchronous part of update logic. Handles binding and state sync."""
+        # Check if API is bound (has key). If not, attempt to bind.
+        if not self._api._is_bound:
+            _LOGGER.info("API not bound, attempting to bind and get key...")
+            try:
+                # Call the synchronous binding method in the API
+                bound_ok = self._api.bind_and_get_key()
+
+                if not bound_ok:
+                    _LOGGER.error("Failed to bind device and get key.")
+                    # Mark as unavailable if binding failed
+                    if not self._disable_available_check:
+                        self._device_online = False
+                    return  # Stop update if binding failed
+                else:
+                    _LOGGER.info("Binding successful.")
+                    # Key is now stored in self._api._encryption_key
+                    # Update the climate entity's copy if still needed (might be removable later)
+                    self._encryption_key = self._api._encryption_key
+                    # Ensure API uses the new key (and satisfy mypy)
+                    if self._encryption_key is not None:
+                        self._api.update_encryption_key(self._encryption_key)
+                    else:
+                        # This case should not happen if binding was successful, but log if it does
+                        _LOGGER.error(
+                            "Binding successful but encryption key is None, cannot update API key."
+                        )
+            except Exception as e:
+                _LOGGER.error("Exception during binding: %s", e, exc_info=True)
                 if not self._disable_available_check:
                     self._device_online = False
-                return  # Stop update if key retrieval not possible
+                return  # Stop update if binding failed
 
-            if not key_retrieved:
-                _LOGGER.warning("Failed to retrieve encryption key during update.")
-                # Device will be marked offline by get_device_key methods
-                return  # Stop update if key retrieval failed
-            # No else needed after return
-            # Key retrieved successfully, proceed to sync state
-            self.sync_state()
+        # If bound (either initially or after successful binding), sync state
+        if self._api._is_bound:
+            try:
+                self.sync_state()
+            except Exception as e:
+                # Catch potential errors during sync_state after successful bind
+                _LOGGER.error(
+                    "Error during sync_state after binding: %s", e, exc_info=True
+                )
+                if not self._disable_available_check:
+                    self._device_online = False  # Mark offline if sync fails
         else:
-            # Key already exists, just sync state
-            self.sync_state()
+            # This case should ideally not be reached if binding fails above, but as safety:
+            _LOGGER.error("Update failed: API is not bound.")
+            if not self._disable_available_check:
+                self._device_online = False
 
     # --- Stubs for missing optional entity callbacks ---
 
@@ -1904,14 +1692,14 @@ class GreeClimate(ClimateEntity):
             s_float = float(state.state)
             s_int = int(s_float)  # Gree uses int temps
             _LOGGER.debug("Updating HVAC target temp to: %d", s_int)
-            if MIN_TEMP <= s_int <= MAX_TEMP:
+            if const.MIN_TEMP <= s_int <= const.MAX_TEMP:
                 self.sync_state({"SetTem": s_int})
             else:
                 _LOGGER.warning(
                     "Target temp %s from entity is out of range (%d-%d)",
                     s_float,
-                    MIN_TEMP,
-                    MAX_TEMP,
+                    const.MIN_TEMP,
+                    const.MAX_TEMP,
                 )
         except (ValueError, TypeError):
             _LOGGER.error(
