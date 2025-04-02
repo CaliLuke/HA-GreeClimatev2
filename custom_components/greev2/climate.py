@@ -2,6 +2,7 @@
 # Do basic imports
 import base64
 import logging
+import socket
 from datetime import timedelta
 
 # Use simplejson if available, otherwise fall back to standard json
@@ -13,15 +14,29 @@ except ImportError:
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from Crypto.Cipher import AES
-from homeassistant.components.climate import (PLATFORM_SCHEMA, ClimateEntity,
-                                              ClimateEntityFeature, HVACMode)
-from homeassistant.const import (ATTR_TEMPERATURE, ATTR_UNIT_OF_MEASUREMENT,
-                                 CONF_HOST, CONF_MAC, CONF_NAME, CONF_PORT,
-                                 CONF_TIMEOUT, STATE_OFF, STATE_ON,
-                                 STATE_UNKNOWN)
+from homeassistant.components.climate import (
+    PLATFORM_SCHEMA,
+    ClimateEntity,
+    ClimateEntityFeature,
+    HVACMode,
+)
+from homeassistant.const import (
+    ATTR_TEMPERATURE,
+    ATTR_UNIT_OF_MEASUREMENT,
+    CONF_HOST,
+    CONF_MAC,
+    CONF_NAME,
+    CONF_PORT,
+    CONF_TIMEOUT,
+    STATE_OFF,
+    STATE_ON,
+    STATE_UNKNOWN,
+)
 from homeassistant.core import Event, callback
-from homeassistant.helpers.event import (EventStateChangedData,
-                                         async_track_state_change_event)
+from homeassistant.helpers.event import (
+    EventStateChangedData,
+    async_track_state_change_event,
+)
 
 # Import the new API class
 from .device_api import GreeDeviceApi
@@ -350,7 +365,8 @@ class GreeClimate(ClimateEntity):
                 pass  # Handled by API init
             elif encryption_version != 2:
                 _LOGGER.error(
-                    "Encryption version %s is not implemented." % self._encryption_version
+                    "Encryption version %s is not implemented."
+                    % self._encryption_version
                 )
         else:
             self._encryption_key = None
@@ -587,6 +603,8 @@ class GreeClimate(ClimateEntity):
             return False
         else:
             _LOGGER.info("Fetched device encrytion key: %s" % str(self._encryption_key))
+            # Update the API instance with the newly fetched key
+            self._api.update_encryption_key(self._encryption_key)
             self._device_online = True
             self._online_attempts = 0
             return True
@@ -598,7 +616,9 @@ class GreeClimate(ClimateEntity):
             status_data = self._api.get_status(propertyNames)
 
             if status_data is not None:
-                _LOGGER.debug("Successfully received status data via API: %s", status_data)
+                _LOGGER.debug(
+                    "Successfully received status data via API: %s", status_data
+                )
                 return status_data
             else:
                 _LOGGER.error("API get_status returned None, indicating failure.")
@@ -632,9 +652,25 @@ class GreeClimate(ClimateEntity):
     def SendStateToAc(self, timeout):
         # Define default options
         opt_keys = [
-            "Pow", "Mod", "SetTem", "WdSpd", "Air", "Blo", "Health", "SwhSlp",
-            "Lig", "SwingLfRig", "SwUpDn", "Quiet", "Tur", "StHt", "TemUn",
-            "HeatCoolType", "TemRec", "SvSt", "SlpMod"
+            "Pow",
+            "Mod",
+            "SetTem",
+            "WdSpd",
+            "Air",
+            "Blo",
+            "Health",
+            "SwhSlp",
+            "Lig",
+            "SwingLfRig",
+            "SwUpDn",
+            "Quiet",
+            "Tur",
+            "StHt",
+            "TemUn",
+            "HeatCoolType",
+            "TemRec",
+            "SvSt",
+            "SlpMod",
         ]
 
         # Add optional features if enabled
@@ -660,12 +696,17 @@ class GreeClimate(ClimateEntity):
             receivedJsonPayload = self._api.send_command(opt_keys, p_values)
 
             if receivedJsonPayload:
-                _LOGGER.info("Successfully sent command via API. Response pack: %s", receivedJsonPayload)
+                _LOGGER.info(
+                    "Successfully sent command via API. Response pack: %s",
+                    receivedJsonPayload,
+                )
                 # Potentially process the response here if needed by GreeClimate
                 # For now, just logging success.
-                return receivedJsonPayload # Return the response pack
+                return receivedJsonPayload  # Return the response pack
             else:
-                _LOGGER.error("API send_command returned None or False, indicating failure.")
+                _LOGGER.error(
+                    "API send_command returned None or False, indicating failure."
+                )
                 return None
         except Exception as e:
             _LOGGER.error("Error calling self._api.send_command: %s", e, exc_info=True)
@@ -1001,7 +1042,7 @@ class GreeClimate(ClimateEntity):
                 if self._online_attempts == self._max_online_attempts:
                     _LOGGER.info(
                         "Could not connect with device %s times. Set it as offline.",
-                         self._max_online_attempts
+                        self._max_online_attempts,
                     )
                     self._device_online = False
                     self._online_attempts = 0
@@ -1596,7 +1637,8 @@ class GreeClimate(ClimateEntity):
                     self.SyncState()
             else:
                 _LOGGER.error(
-                    "Encryption version %s is not implemented." % self._encryption_version
+                    "Encryption version %s is not implemented."
+                    % self._encryption_version
                 )
         else:
             self.SyncState()

@@ -14,8 +14,8 @@ except ImportError:
 _LOGGER = logging.getLogger(__name__)
 
 # Placeholder constants for GCM (might need to be moved/configured)
-GCM_IV = b'\x54\x40\x78\x44\x49\x67\x5a\x51\x6c\x5e\x63\x13'
-GCM_ADD = b'qualcomm-test'
+GCM_IV = b"\x54\x40\x78\x44\x49\x67\x5a\x51\x6c\x5e\x63\x13"
+GCM_ADD = b"qualcomm-test"
 
 
 class GreeDeviceApi:
@@ -101,18 +101,25 @@ class GreeDeviceApi:
                     raise ValueError("Cannot decrypt V1 data: key/cipher missing.")
             decrypted_pack = self._cipher.decrypt(base64decoded_pack)
         elif self._encryption_version == 2:
-            if not self._encryption_key:
-                raise ValueError("Cannot decrypt V2 data: key missing.")
-            # Need the GCM cipher passed in - the one used for the *request* might not
-            # be the right one if the key was just obtained *in* this response.
+            # Need the GCM cipher passed in (which is the 'cipher' argument).
+            # This cipher was created using the appropriate key (generic key for binding,
+            # or the device key for subsequent commands/status).
+            # Do NOT check self._encryption_key here, as it might be None during binding.
             # For now, assume the passed 'cipher' arg IS the correct GCM cipher for decrypt
             tag = received_json["tag"]
+            # Explicitly try the decryption/verification step
             try:
+                _LOGGER.debug("Attempting GCM decrypt_and_verify...")
                 decrypted_pack = cipher.decrypt_and_verify(
                     base64decoded_pack, base64.b64decode(tag)
                 )
+                _LOGGER.debug("GCM decrypt_and_verify successful.")
             except ValueError as e:
-                _LOGGER.error("GCM decryption/verification failed: %s", e)
+                _LOGGER.error(
+                    "GCM decryption/verification failed: %s", e, exc_info=True
+                )
+                # Re-raise the error to be caught by the caller (_fetch_result's caller)
+                raise  # Re-raise the ValueError
                 raise  # Re-raise exception
         else:
             raise ValueError(
@@ -152,9 +159,9 @@ class GreeDeviceApi:
             _LOGGER.error(
                 "send_command error: opt_keys length (%s) != p_values length (%s)",
                 len(opt_keys),
-                len(p_values)
+                len(p_values),
             )
-            return None # Or raise ValueError
+            return None  # Or raise ValueError
 
         # Convert p_values - Note: Gree protocol might expect ints for bools, strings for enums etc.
         # This conversion might need refinement based on actual device behavior.
@@ -162,24 +169,28 @@ class GreeDeviceApi:
         for val in p_values:
             if isinstance(val, bool):
                 converted_p_values.append(int(val))
-            elif isinstance(val, HVACMode): # Handle HVACMode enum specifically
-                converted_p_values.append(val.value) # Assuming .value gives the right representation
+            elif isinstance(val, HVACMode):  # Handle HVACMode enum specifically
+                converted_p_values.append(
+                    val.value
+                )  # Assuming .value gives the right representation
             elif val is None:
                 # How should None be represented? Assuming 0 for now.
-                _LOGGER.warning("Encountered None value in command params, representing as 0.")
+                _LOGGER.warning(
+                    "Encountered None value in command params, representing as 0."
+                )
                 converted_p_values.append(0)
             elif isinstance(val, (str, int, float)):
                 converted_p_values.append(val)
             else:
-                 _LOGGER.error("Unsupported type in p_values for send_command: %s (%s)", val, type(val))
-                 # Decide handling - maybe default to 0 or raise error?
-                 converted_p_values.append(0) # Defaulting to 0 for now
+                _LOGGER.error(
+                    "Unsupported type in p_values for send_command: %s (%s)",
+                    val,
+                    type(val),
+                )
+                # Decide handling - maybe default to 0 or raise error?
+                converted_p_values.append(0)  # Defaulting to 0 for now
 
-        command_payload = {
-            "opt": opt_keys,
-            "p": converted_p_values,
-            "t": "cmd"
-        }
+        command_payload = {"opt": opt_keys, "p": converted_p_values, "t": "cmd"}
 
         # Construct the inner JSON command payload string using simplejson
         try:
@@ -191,29 +202,33 @@ class GreeDeviceApi:
         _LOGGER.debug("Constructed state_pack_json: %s", state_pack_json)
 
         sent_json_payload = None
-        cipher_for_fetch = None # Cipher needed for _fetch_result (mainly for v2 decryption)
+        cipher_for_fetch = (
+            None  # Cipher needed for _fetch_result (mainly for v2 decryption)
+        )
 
         if self._encryption_version == 1:
             if not self._cipher:
                 _LOGGER.error("Cannot send V1 command: ECB cipher not initialized.")
                 # Potentially try to bind/get key first? Or just fail.
-                return None # Or raise exception
-            cipher_for_fetch = self._cipher # Use the instance's ECB cipher
+                return None  # Or raise exception
+            cipher_for_fetch = self._cipher  # Use the instance's ECB cipher
 
             padded_state = self._pad(state_pack_json).encode("utf8")
-            encrypted_pack = base64.b64encode(cipher_for_fetch.encrypt(padded_state)).decode("utf-8")
+            encrypted_pack = base64.b64encode(
+                cipher_for_fetch.encrypt(padded_state)
+            ).decode("utf-8")
 
             sent_json_payload = (
-                f'{{\"cid\":\"app\",\"i\":0,\"pack\":\"{encrypted_pack}\",'
-                f'\"t\":\"pack\",\"tcid\":\"{self._mac}\",'
-                f'\"uid\":0}}' # Assuming uid 0 for commands, confirm if needed
+                f'{{"cid":"app","i":0,"pack":"{encrypted_pack}",'
+                f'"t":"pack","tcid":"{self._mac}",'
+                f'"uid":0}}'  # Assuming uid 0 for commands, confirm if needed
             )
 
         elif self._encryption_version == 2:
             if not self._encryption_key:
                 _LOGGER.error("Cannot send V2 command: Encryption key missing.")
                 # Potentially try to bind/get key first? Or just fail.
-                return None # Or raise exception
+                return None  # Or raise exception
 
             # Encrypt using the instance's key
             pack, tag = self._encrypt_gcm(self._encryption_key, state_pack_json)
@@ -222,20 +237,20 @@ class GreeDeviceApi:
             cipher_for_fetch = self._get_gcm_cipher(self._encryption_key)
 
             sent_json_payload = (
-                f'{{\"cid\":\"app\",\"i\":0,\"pack\":\"{pack}\",'
-                f'\"t\":\"pack\",\"tcid\":\"{self._mac}\",'
-                f'\"uid\":0,\"tag\":\"{tag}\"}}' # Assuming uid 0 for commands, confirm if needed
+                f'{{"cid":"app","i":0,"pack":"{pack}",'
+                f'"t":"pack","tcid":"{self._mac}",'
+                f'"uid":0,"tag":"{tag}"}}'  # Assuming uid 0 for commands, confirm if needed
             )
         else:
             _LOGGER.error(
                 "Unsupported encryption version: %s. Cannot send command.",
                 self._encryption_version,
             )
-            return None # Or raise an exception
+            return None  # Or raise an exception
 
         if sent_json_payload is None or cipher_for_fetch is None:
-             _LOGGER.error("Failed to prepare command payload or cipher.")
-             return None # Should have been caught earlier, but safety check
+            _LOGGER.error("Failed to prepare command payload or cipher.")
+            return None  # Should have been caught earlier, but safety check
 
         try:
             # Call the internal fetch method
@@ -247,11 +262,11 @@ class GreeDeviceApi:
             _LOGGER.error("Socket error sending command: %s", e)
             return None
         except (simplejson.JSONDecodeError, ValueError) as e:
-             _LOGGER.error("Error processing response after sending command: %s", e)
-             return None
-        except Exception as e: # Catch any other unexpected errors
-             _LOGGER.error("Unexpected error sending command: %s", e, exc_info=True)
-             return None
+            _LOGGER.error("Error processing response after sending command: %s", e)
+            return None
+        except Exception as e:  # Catch any other unexpected errors
+            _LOGGER.error("Unexpected error sending command: %s", e, exc_info=True)
+            return None
 
     def get_status(self, property_names: list[str]) -> Optional[dict]:
         """Fetches the status of specified properties from the device."""
@@ -264,32 +279,34 @@ class GreeDeviceApi:
             _LOGGER.error("Error serializing property names to JSON: %s", e)
             return None
 
-        plaintext_payload = (
-            f'{{\"cols\":{cols_json},\"mac\":\"{self._mac}\",\"t\":\"status\"}}'
-        )
+        plaintext_payload = f'{{"cols":{cols_json},"mac":"{self._mac}","t":"status"}}'
 
         sent_json_payload = None
-        cipher_for_fetch = None # Cipher needed for _fetch_result (mainly for v2 decryption)
+        cipher_for_fetch = (
+            None  # Cipher needed for _fetch_result (mainly for v2 decryption)
+        )
 
         if self._encryption_version == 1:
             if not self._cipher:
                 _LOGGER.error("Cannot get V1 status: ECB cipher not initialized.")
-                return None # Or raise exception
+                return None  # Or raise exception
             cipher_for_fetch = self._cipher
 
             padded_state = self._pad(plaintext_payload).encode("utf8")
-            encrypted_pack = base64.b64encode(cipher_for_fetch.encrypt(padded_state)).decode("utf-8")
+            encrypted_pack = base64.b64encode(
+                cipher_for_fetch.encrypt(padded_state)
+            ).decode("utf-8")
 
             sent_json_payload = (
-                f'{{\"cid\":\"app\",\"i\":0,\"pack\":\"{encrypted_pack}\",'
-                f'\"t\":\"pack\",\"tcid\":\"{self._mac}\",'
-                f'\"uid\":0}}' # Assuming uid 0 for status, confirm if needed
+                f'{{"cid":"app","i":0,"pack":"{encrypted_pack}",'
+                f'"t":"pack","tcid":"{self._mac}",'
+                f'"uid":0}}'  # Assuming uid 0 for status, confirm if needed
             )
 
         elif self._encryption_version == 2:
             if not self._encryption_key:
                 _LOGGER.error("Cannot get V2 status: Encryption key missing.")
-                return None # Or raise exception
+                return None  # Or raise exception
 
             # Encrypt using the instance's key
             pack, tag = self._encrypt_gcm(self._encryption_key, plaintext_payload)
@@ -298,20 +315,20 @@ class GreeDeviceApi:
             cipher_for_fetch = self._get_gcm_cipher(self._encryption_key)
 
             sent_json_payload = (
-                f'{{\"cid\":\"app\",\"i\":0,\"pack\":\"{pack}\",'
-                f'\"t\":\"pack\",\"tcid\":\"{self._mac}\",'
-                f'\"uid\":0,\"tag\":\"{tag}\"}}' # Assuming uid 0 for status, confirm if needed
+                f'{{"cid":"app","i":0,"pack":"{pack}",'
+                f'"t":"pack","tcid":"{self._mac}",'
+                f'"uid":0,"tag":"{tag}"}}'  # Assuming uid 0 for status, confirm if needed
             )
         else:
             _LOGGER.error(
                 "Unsupported encryption version: %s. Cannot get status.",
                 self._encryption_version,
             )
-            return None # Or raise an exception
+            return None  # Or raise an exception
 
         if sent_json_payload is None or cipher_for_fetch is None:
-             _LOGGER.error("Failed to prepare status request payload or cipher.")
-             return None # Should have been caught earlier, but safety check
+            _LOGGER.error("Failed to prepare status request payload or cipher.")
+            return None  # Should have been caught earlier, but safety check
 
         try:
             # Call the internal fetch method
@@ -323,14 +340,39 @@ class GreeDeviceApi:
             if "dat" in received_json_pack:
                 return received_json_pack["dat"]
             else:
-                _LOGGER.error("'dat' field missing from status response: %s", received_json_pack)
+                _LOGGER.error(
+                    "'dat' field missing from status response: %s", received_json_pack
+                )
                 return None
         except (socket.timeout, socket.error) as e:
             _LOGGER.error("Socket error getting status: %s", e)
             return None
         except (simplejson.JSONDecodeError, ValueError) as e:
-             _LOGGER.error("Error processing response after getting status: %s", e)
-             return None
-        except Exception as e: # Catch any other unexpected errors
-             _LOGGER.error("Unexpected error getting status: %s", e, exc_info=True)
-             return None
+            _LOGGER.error("Error processing response after getting status: %s", e)
+            return None
+        except Exception as e:  # Catch any other unexpected errors
+            _LOGGER.error("Unexpected error getting status: %s", e, exc_info=True)
+            return None
+
+    # Method definition should be at class level indentation
+    def update_encryption_key(self, new_key: bytes) -> None:
+        """
+        Update the internal encryption key and reset the cipher if necessary.
+
+        This is primarily used after a successful V2 (GCM) key binding
+        to ensure subsequent API calls use the correct device key.
+        It also handles resetting the V1 (ECB) cipher if the key changes.
+        """
+        _LOGGER.debug("Updating internal API encryption key.")
+        self._encryption_key = new_key
+
+        # If using V1 (ECB), the cipher instance depends on the key, so recreate it.
+        if self._encryption_version == 1:
+            self._cipher = AES.new(self._encryption_key, AES.MODE_ECB)
+        # For V2 (GCM) or other versions, we don't store a persistent cipher instance
+        # based on the device key in self._cipher. Ensure it's None if set previously.
+        elif self._cipher is not None:
+            self._cipher = None
+
+
+# Misplaced except blocks removed - will be added back after the try block
