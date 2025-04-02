@@ -3,10 +3,6 @@
 # Exit on error, treat unset variables as errors, fail pipeline if any command fails
 set -euo pipefail
 
-# --- Configuration ---
-TARGET_BRANCH="master"
-TAG_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+$' # X.Y.Z format
-
 # --- Argument Parsing ---
 dry_run=false
 if [[ "${1:-}" == "--dry-run" || "${1:-}" == "-d" ]]; then
@@ -14,6 +10,10 @@ if [[ "${1:-}" == "--dry-run" || "${1:-}" == "-d" ]]; then
   echo "*** Dry Run Mode Enabled ***"
   echo
 fi
+
+# --- Configuration ---
+TARGET_BRANCH="master"
+TAG_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+$' # X.Y.Z format
 
 # --- Helper Functions ---
 check_command() {
@@ -45,9 +45,9 @@ echo
 
 # --- Git Status Check ---
 echo "Checking git status..."
-# if ! git diff --quiet HEAD --; then # Temporarily disabled for dry run test
-#   print_error "Working directory is not clean. Please commit or stash changes."
-# fi
+if ! git diff --quiet HEAD --; then
+  print_error "Working directory is not clean. Please commit or stash changes."
+fi
 
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 if [ "$current_branch" != "$TARGET_BRANCH" ]; then
@@ -76,8 +76,6 @@ new_tag="$major.$minor.$next_patch"
 echo "Calculated next tag: $new_tag"
 echo
 
-# --- User Confirmation ---
-
 # --- Dry Run Output ---
 if [ "$dry_run" = true ]; then
   echo "Dry run complete. Would execute the following commands:"
@@ -87,6 +85,7 @@ if [ "$dry_run" = true ]; then
   exit 0
 fi
 
+# --- User Confirmation ---
 read -p "Create and push tag '$new_tag' and create GitHub release? (y/N) " confirm
 confirm_lower=$(echo "$confirm" | tr '[:upper:]' '[:lower:]') # Convert to lowercase
 
