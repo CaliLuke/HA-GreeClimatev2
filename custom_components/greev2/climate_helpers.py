@@ -199,14 +199,20 @@ class GreeClimateState:
     # --- Helper Methods ---
     def get_internal_temp(self) -> Optional[float]:
         """Gets internal temperature from device state, applying offset if needed."""
+        _LOGGER.debug("get_internal_temp: Internal sensor detected flag (_has_temp_sensor): %s", self._has_temp_sensor)
         if not self._has_temp_sensor:  # Use stored flag
             return None
+            _LOGGER.debug("get_internal_temp: Returning None (internal sensor not detected)")
+            return None # Moved return here
         temp_sen = self._ac_options.get("TemSen")
         if temp_sen is not None:
-            temp_val = temp_sen if temp_sen <= TEMP_OFFSET else temp_sen - TEMP_OFFSET
-            return float(temp_val)
-        return None
-
+            _LOGGER.debug("get_internal_temp: Raw TemSen value from _ac_options: %s", temp_sen) # Indented
+            temp_val = temp_sen if temp_sen <= TEMP_OFFSET else temp_sen - TEMP_OFFSET # Indented
+            _LOGGER.debug("get_internal_temp: Returning calculated internal temp: %s", float(temp_val)) # Indented and moved before return
+            return float(temp_val) # Indented
+        else: # Added else block
+            _LOGGER.debug("get_internal_temp: Returning None (TemSen value was None)") # Indented under else
+            return None # Indented under else
 
 async def detect_features(
     api: GreeDeviceApi, current_options: List[str]

@@ -165,7 +165,7 @@ class GreeClimate(ClimateEntity):
     # pylint: disable=too-many-statements
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the Gree Climate device from a config entry."""
-        _LOGGER.info(
+        _LOGGER.debug(
             "Initialize the GREE climate device from config entry: %s", entry.entry_id
         )
         self.hass = hass
@@ -455,10 +455,12 @@ class GreeClimate(ClimateEntity):
     @property
     def current_temperature(self) -> Optional[float]:
         """Return the current temperature."""
+        _LOGGER.debug("current_temperature: Using external sensor path (%s)", self._temp_sensor_entity_id)
         # If external sensor used, return its value stored in self._current_temperature
         if self._temp_sensor_entity_id:
             return self._current_temperature
         # Otherwise, get from internal state helper
+        _LOGGER.debug("current_temperature: Using internal state path (_state.get_internal_temp())")
         return self._state.get_internal_temp()
 
     @property
@@ -702,6 +704,7 @@ class GreeClimate(ClimateEntity):
 
     @callback
     def _async_update_current_temp(self, state: State) -> None:
+        _LOGGER.debug("_async_update_current_temp: Processing state for external sensor '%s': %s", state.entity_id, state.state)
         """Update internal _current_temperature from sensor state."""
         # This method only updates the internal variable used by the current_temperature property
         # when an external sensor is configured. It does NOT interact with self._state.

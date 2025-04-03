@@ -1,7 +1,7 @@
 {
   "domain": "greev2",
   "name": "Gree AC v2",
-  "version": "2.14.36",
+  "version": "2.14.37",
   "documentation": "https://github.com/CaliLuke/HA-GreeClimatev2#readme",
   "dependencies": [],
   "codeowners": ["@caliluke"],

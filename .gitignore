@@ -139,4 +139,7 @@ Thumbs.db
 
 # Cursor IDE
 .cursor/ 
+
+# Example files
+Tosot AC example.md
 REFACTORING_PLAN.md
