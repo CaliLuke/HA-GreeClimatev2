@@ -77,7 +77,7 @@ def get_user_schema(user_input: dict | None = None) -> vol.Schema:
             ),
             # Add optional Temperature Sensor selector
             vol.Optional(
-                CONF_TEMP_SENSOR, default=user_input.get(CONF_TEMP_SENSOR, "")
+                CONF_TEMP_SENSOR, default=user_input.get(CONF_TEMP_SENSOR)
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain="sensor", device_class=SensorDeviceClass.TEMPERATURE

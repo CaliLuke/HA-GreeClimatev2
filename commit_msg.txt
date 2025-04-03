@@ -1,8 +1,7 @@
-feat: Add diagnostic logging for temperature source
+fix: Allow empty external temp sensor in config flow
 
-Adds detailed DEBUG level logging to trace the source of the `current_temperature` value, helping diagnose whether the internal sensor (`TemSen`) or a configured external sensor is being used. Also adjusts existing logging levels for clarity.
-
-Changes:
-- Added DEBUG logs to `climate.py` (`current_temperature`, `_async_update_current_temp`) and `climate_helpers.py` (`get_internal_temp`).
-- Adjusted existing logging levels in `climate.py` (INFO->DEBUG, removed redundant DEBUG).
-- Fixed indentation errors in `climate_helpers.py`.
+Changes the default value for the optional external temperature
+sensor field in the user config flow schema from an empty string
+to None. This aims to resolve a UI validation error where leaving
+the optional field blank was incorrectly treated as an invalid
+entity ID.
