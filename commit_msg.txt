@@ -1,7 +1,0 @@
-fix: Allow empty external temp sensor in config flow
-
-Changes the default value for the optional external temperature
-sensor field in the user config flow schema from an empty string
-to None. This aims to resolve a UI validation error where leaving
-the optional field blank was incorrectly treated as an invalid
-entity ID.

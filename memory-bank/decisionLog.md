@@ -495,5 +495,28 @@ This file records architectural and implementation decisions using a list format
     3.  **User: Approve Commit Message:** Reviews message presented by Roo.
     4.  **Roo (AI): Save Commit Message:** Saves approved message to `commit_msg.txt` in project root.
     5.  **Run `./release.sh --commit-message-file commit_msg.txt`:** Script automatically handles `git add .`, `git commit --file=commit_msg.txt`, `git push`, cleanup of `commit_msg.txt`, tagging, and GitHub release creation (prompting user only before tagging/releasing).
+
+
+---
+
+## Decision
+
+*   [2025-04-04 14:08:44] Refine strategy for selecting elements using Puppeteer MCP server after troubleshooting failures.
+
+## Rationale
+
+*   Initial attempts to interact with the Home Assistant community forum using Puppeteer failed due to incorrect CSS selectors for dynamic elements (category dropdown).
+*   Relying solely on common patterns and guessing selectors proved inefficient and unreliable.
+*   Obtaining the actual HTML structure (either via user input or potentially `puppeteer_evaluate`) was necessary to identify the correct selector.
+
+## Implementation Details (Learnings/Strategy)
+
+*   **Initial Approach:** Try common/standard selectors first for efficiency.
+*   **On Failure:** Do *not* continue guessing blindly.
+*   **Gather Context:** Use `puppeteer_evaluate` to retrieve the HTML structure (`innerHTML`) of the relevant parent container or the specific element if possible.
+*   **Analyze HTML:** Identify robust selectors (e.g., `data-*` attributes, IDs) from the retrieved HTML.
+*   **Retry Action:** Use the refined selector.
+*   **User Fallback:** If retrieving/analyzing HTML via `evaluate` fails or is impractical, ask the user to provide the relevant HTML snippet or perform the action manually.
+*   **Acknowledge Tool Limits:** Understand that Puppeteer cannot passively monitor user actions; interaction relies on specific command execution.
 *   `prerelease.sh`: Handles preparation (version, manifest, stash, list files). Requires manual execution. Dry run available (`--dry-run`).
 *   `release.sh`: Handles commit, push, tag, GitHub release. Requires `--commit-message-file` argument pointing to the message file created by Roo after approval. Dry run available (`--dry-run`).

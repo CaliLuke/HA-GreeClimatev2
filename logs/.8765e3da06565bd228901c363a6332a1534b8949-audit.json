@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/lcandela/Documents/Code/HA-GreeClimatev2/logs/.8765e3da06565bd228901c363a6332a1534b8949-audit.json",
+    "files": [
+        {
+            "date": 1743799543728,
+            "name": "/Users/lcandela/Documents/Code/HA-GreeClimatev2/logs/mcp-puppeteer-2025-04-04.log",
+            "hash": "a1fd865a184ac037ed2cb562a69381ff955f08f27503f40bbb76d4c8e08d7009"
+        }
+    ],
+    "hashType": "sha256"
+}

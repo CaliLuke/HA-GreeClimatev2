@@ -290,8 +290,18 @@ class GreeV2ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
 
                 # If validation succeeds, create the entry
-                _LOGGER.info("Validation successful, creating config entry.")
-                # Pass original user_input (including name, area_id, enc version, temp_sensor) to data
+                _LOGGER.info("Validation successful, preparing config entry data.")
+
+                # Remove temp sensor key if it's empty or None
+                temp_sensor_value = user_input.get(CONF_TEMP_SENSOR)
+                if not temp_sensor_value: # Checks for None or empty string
+                    _LOGGER.debug("External temp sensor is blank, removing key from entry data.")
+                    user_input.pop(CONF_TEMP_SENSOR, None) # Remove key if it exists
+                else:
+                    _LOGGER.debug("External temp sensor provided: %s", temp_sensor_value)
+
+                _LOGGER.debug("Final data for config entry: %s", user_input)
+                # Pass potentially modified user_input to data
                 return self.async_create_entry(title=info["title"], data=user_input)
 
             # Reordered except blocks: AbortFlow first
